@@ -1,1 +1,1 @@
-git clone https://github.com/dbaldzhiev/dwgmagic2.git .
+git pull
