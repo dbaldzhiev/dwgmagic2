@@ -8,15 +8,15 @@ def removePrevPP(path):
         except:
             pass
         try:
-            os.remove(path+"/manualmerge.bat")
+            os.remove(path + "/MANUALMERGE.bat")
         except:
             pass
         try:
-            os.remove(path+"/MasterMerged.dwg")
+            os.remove(path + "/MASTERMERGED.dwg")
         except:
             pass
         try:
-            os.remove(path+"/MasterXref.dwg")
+            os.remove(path + "/MASTERXREFED.dwg")
         except:
             pass
 

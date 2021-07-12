@@ -1,11 +1,13 @@
-import subprocess as sp
-from shutil import copy
+import logging
 import os
 import re
-import logging
+import subprocess as sp
 import sys
-import joblib as jb
+from shutil import copy
+
 import click
+import joblib as jb
+
 import config as cfg
 
 
@@ -18,6 +20,7 @@ def getDir(path):
     if len(dwglist) < 1:
         sys.exit('THERE ARE NO FILES')
     return dwglist
+
 
 def tidy():
     path = os.getcwd()
@@ -41,25 +44,26 @@ def tidy():
             print("Derevitized folder already exists")
 
     for fn in fns:
-        #print("COPYING " + fn)
+        # print("COPYING " + fn)
         copy(path + "/" + fn, path + "/originals/" + fn)
         copy(path + "/" + fn, path + "/derevitized/" + fn)
         os.remove(path + "/" + fn)
     print("TIDY COMPLETE")
     logging.debug("TIDY COMPLETE")
 
+
 class Project:
     def filenameParser(self):
         out = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]
         return out
 
-    def PScript(self,xexpld):
+    def PScript(self, xexpld):
         scr = open("./scripts/DWGMAGIC.scr", "w+")
         scr.write("INSUNITS 5\n")
         for sheet in self.sheetNamesList:
             scr.write("xref\n")
             scr.write("attach\n")
-            scr.write("{p}/derevitized/{s}_xrefed.dwg\n".format(p=os.getcwd(),s=sheet[:-4]))
+            scr.write("{p}/derevitized/{s}_xrefed.dwg\n".format(p=os.getcwd(), s=sheet[:-4]))
 
             scr.write("0,0,0\n")
             scr.write("\n")  # x scalefactor
@@ -99,7 +103,8 @@ class Project:
         scr.write("zoom all\n")
         scr.write("save {0}/MASTERMERGED.dwg\n".format(os.getcwd()))
         scr.close()
-    def MMMScript(self,xexpld):
+
+    def MMMScript(self, xexpld):
         scr = open("./scripts/MMM.scr", "w+")
         scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
         scr.write("visretain 0\n")
@@ -138,9 +143,10 @@ class Project:
         scr.write("accoreconsole /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n")
         scr.write("popd\n")
         scr.write("pause\n")
+
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
-        command = "{acc} /s {path}/scripts/DWGMAGIC.scr".format(acc=cfg.paths["acc"],path=os.getcwd())
+        command = "{acc} /s {path}/scripts/DWGMAGIC.scr".format(acc=cfg.paths["acc"], path=os.getcwd())
 
         print("RUNNING: " + command)
         if cfg.verbose:
@@ -155,10 +161,11 @@ class Project:
         scr.close()
         self.filenames = getDir("{0}/derevitized/".format(os.getcwd()))
         snl = self.filenameParser()
-        snlindx = list(map(int,(list(map(lambda x: x[:-4],snl)))))
-        self.sheetNamesList = [x for y , x in sorted(zip(snlindx,snl))]
+        snlindx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
+        self.sheetNamesList = [x for y, x in sorted(zip(snlindx, snl))]
         self.xrefXploder = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
-        self.sheets = jb.Parallel(n_jobs=jb.cpu_count())(jb.delayed(Sheet)(s,self.filenames) for s in self.sheetNamesList)
+        self.sheets = jb.Parallel(n_jobs=jb.cpu_count())(
+            jb.delayed(Sheet)(s, self.filenames) for s in self.sheetNamesList)
         self.PScript(self.xrefXploder)
         self.MMMScript(self.xrefXploder)
         self.MMMBAT()
@@ -166,8 +173,9 @@ class Project:
         logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")
 
+
 class Sheet:
-    def viewsOnSheetGetter(self,ind,fns):
+    def viewsOnSheetGetter(self, ind, fns):
         floatRegex = re.compile(str(ind) + "-View-\d+")
         rawViewList = list(filter(floatRegex.match, fns))
         return rawViewList
@@ -190,23 +198,28 @@ class Sheet:
         scrMaster.close()
 
     def runSheetCleaner(self):
-        command = "{acc} /i {path}/derevitized/{sheet}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],path=os.getcwd(),sheet=self.sheetName,script=self.sheetCleanerScript)
-        #print(command)
-        print("CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,script=self.sheetCleanerScript))
+        command = "{acc} /i {path}/derevitized/{sheet}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
+                                                                                              path=os.getcwd(),
+                                                                                              sheet=self.sheetName,
+                                                                                              script=self.sheetCleanerScript)
+        # print(command)
+        print(
+            "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName, script=self.sheetCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
         if cfg.verbose:
             print(output.decode("utf-16"))
         logging.debug(output.decode("utf-16"))
 
-    def __init__(self, sn,fns):
+    def __init__(self, sn, fns):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
         self.sheetName = sn[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
-        self.viewNamesOnSheetList = self.viewsOnSheetGetter(self.sheetIndx,fns)
+        self.viewNamesOnSheetList = self.viewsOnSheetGetter(self.sheetIndx, fns)
         self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
         self.runSheetCleaner()
+
 
 class View:
     def VScriptOLD(self):
@@ -214,11 +227,12 @@ class View:
         scrSlave.write("(command)\n")
         scrSlave.write("model\n")
         scrSlave.write("xref t * r\n")
-        #scrSlave.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
-        #scrSlave.write("bxt\n")
+        # scrSlave.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
+        # scrSlave.write("bxt\n")
         scrSlave.write("zoom all\n")
         scrSlave.write("qsave\n")
         scrSlave.close()
+
     def VScript(self):
         scrSlave = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
         scrSlave.write("(command)\n")
@@ -229,16 +243,19 @@ class View:
         scrSlave.close()
 
     def runViewCleaner(self):
-        command = "{acc} /i {path}/derevitized/{view}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],path=os.getcwd(),view=self.viewName,script=self.viewCleanerScript)
-        #print(command)
-        print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName,script=self.viewCleanerScript))
+        command = "{acc} /i {path}/derevitized/{view}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
+                                                                                             path=os.getcwd(),
+                                                                                             view=self.viewName,
+                                                                                             script=self.viewCleanerScript)
+        # print(command)
+        print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
         if cfg.verbose:
             print(output.decode("utf-16"))
         logging.debug(output.decode("utf-16"))
 
-    def getXfromV(self,view):
+    def getXfromV(self, view):
         command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(), v=view)
         process = sp.Popen(command, stdout=sp.PIPE)
         cmdoutput, err = process.communicate()
@@ -255,14 +272,13 @@ class View:
         self.viewIndx = str(re.compile("\d+-View-(\d+).dwg").search(vn).group(1))
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
         self.viewPath = ""
-        self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx,self.viewIndx)
+        self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx, self.viewIndx)
         self.xrefs = self.getXfromV(self.viewName)
         self.VScript()
         self.runViewCleaner()
+
 
 class Xref:
     def __init__(self):
         self.xrefName = ""
         self.xrefPath = ""
-
-
