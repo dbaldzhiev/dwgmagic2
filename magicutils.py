@@ -22,7 +22,6 @@ def getDir(path):
         sys.exit('THERE ARE NO FILES')
     return dwglist
 
-
 def preprocess():
     path = os.getcwd()
     fns = getDir(os.getcwd())
@@ -51,7 +50,6 @@ def preprocess():
         os.remove(path + "/" + fn)
     print("TIDY COMPLETE")
     logging.debug("TIDY COMPLETE")
-
 
 class Project:
     def filenameParser(self):
@@ -152,23 +150,23 @@ class Project:
         logging.debug("RUNNING: {}".format(command))
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
         while process.poll() is None:
-            output = process.stdout.readline()
-            if output != "":
-                print(output)
-                logging.debug(output)
+            line = process.stdout.readline()
+            if line != "":
+                print(line)
+        output, err = process.communicate()
+        logging.debug(output)
 
 
     def __init__(self):
         scr = open("./scripts/CHECKER.scr", "w+")
         scr.write("exit\n")
         scr.close()
-        # self.filenames = getDir("{0}/derevitized/".format(os.getcwd()))
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
         snl = self.filenameParser()
         snlindx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
         self.sheetNamesList = [x for y, x in sorted(zip(snlindx, snl))]
         self.xrefXploder = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
-        self.sheets = jb.Parallel(n_jobs=jb.cpu_count())(
+        self.sheets = jb.Parallel(n_jobs=-1, verbose=100)(
             jb.delayed(Sheet)(s, self.filenames) for s in self.sheetNamesList)
         self.PScript(self.xrefXploder)
         self.MMMScript(self.xrefXploder)
@@ -176,7 +174,6 @@ class Project:
         self.runPScript()
         logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")
-
 
 class Sheet:
     def viewsOnSheetGetter(self, ind, fns):
@@ -206,15 +203,12 @@ class Sheet:
                                                                                               path=os.getcwd(),
                                                                                               sheet=self.sheetName,
                                                                                               script=self.sheetCleanerScript)
-        # print(command)
-        logging.debug("RUNNING: {}".format(command))
-        print(
-            "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName, script=self.sheetCleanerScript))
+        if cfg.verbose:
+            print(
+                "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,
+                                                                     script=self.sheetCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
-        if cfg.verbose:
-            print(output.decode("utf-16"))
-        logging.debug(output.decode("utf-16"))
 
     def __init__(self, sn, fns):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
@@ -225,18 +219,7 @@ class Sheet:
         self.SScript()
         self.runSheetCleaner()
 
-
 class View:
-    def VScriptOLD(self):
-        scrSlave = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
-        scrSlave.write("(command)\n")
-        scrSlave.write("model\n")
-        scrSlave.write("xref t * r\n")
-        # scrSlave.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
-        # scrSlave.write("bxt\n")
-        scrSlave.write("zoom all\n")
-        scrSlave.write("qsave\n")
-        scrSlave.close()
 
     def VScript(self):
         scrSlave = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
@@ -253,13 +236,12 @@ class View:
                                                                                              view=self.viewName,
                                                                                              script=self.viewCleanerScript)
         # print(command)
-        logging.debug("RUNNING: {}".format(command))
-        print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
+        if cfg.verbose:
+            print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
         if cfg.verbose:
             print(output.decode("utf-16"))
-        logging.debug(output.decode("utf-16"))
 
     def getXfromV(self, view):
         command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(), v=view)
@@ -271,7 +253,6 @@ class View:
         output = [x[0] for x in xrefsList]
         if cfg.verbose:
             print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=view, x=output))
-        logging.debug("VIEW NAMED: {v} has the following XREFS:{x}".format(v=view, x=output))
         return output
 
     def __init__(self, vn):
