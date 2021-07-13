@@ -1,6 +1,7 @@
 import logging
 import os
 import re
+import shlex
 import subprocess as sp
 import sys
 from shutil import copy
@@ -146,18 +147,15 @@ class Project:
 
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
-        command = "{acc} /s {path}/scripts/DWGMAGIC.scr".format(acc=cfg.paths["acc"], path=os.getcwd())
+        command = "'{acc}' /s '{path}/scripts/DWGMAGIC.scr'".format(acc=cfg.paths["acc"], path=os.getcwd())
         print("RUNNING: " + command)
         logging.debug("RUNNING: {}".format(command))
-        if cfg.verbose:
-            print(command)
-        process = sp.Popen(command, stdout=sp.PIPE, shell=True, universal_newlines=True)
-        while True:
-            line = process.stdout.readline()
-            if line != "":
-                print(line.decode("utf-16"))
-        # output, err = process.communicate()
-        logging.debug(output.decode("utf-16"))
+        process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
+        while process.poll() is None:
+            output = process.stdout.readline()
+            if output != "":
+                print(output)
+                logging.debug(output)
 
 
     def __init__(self):

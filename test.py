@@ -1,5 +1,6 @@
 import logging
 import os
+import shlex
 import subprocess as sp
 
 import config as cfg
@@ -7,20 +8,16 @@ import config as cfg
 
 def runPScript():
     print("STARTING DWGMAGIC: ")
-    command = "{acc} /s {path}/scripts/DWGMAGIC.scr".format(acc=cfg.paths["acc"], path=os.getcwd())
+    command = "'{acc}' /s '{path}/scripts/DWGMAGIC.scr'".format(acc=cfg.paths["acc"], path=os.getcwd())
     print("RUNNING: " + command)
     logging.debug("RUNNING: {}".format(command))
-    if cfg.verbose:
-        print(command)
-    process = sp.Popen(command, stdout=sp.PIPE)
-    while True:
+    process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
+    while process.poll() is None:
         output = process.stdout.readline()
-        if output == '' and process.poll() is not None:
-            break
-        if output:
-            print(output.strip().decode("utf-16", errors="ignore"))
-    # output, err = process.communicate()
-    # logging.debug(output.decode("utf-16"))
+        if output != "":
+            print(output)
+            logging.debug(output)
 
 
 runPScript()
+print("end")
