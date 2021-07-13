@@ -78,7 +78,7 @@ class Project:
         scr.write("xbind s *\n")
         scr.write("xbind lt *\n")
         if xexpld:
-            scr.write("bxt\n")
+            scr.write("tecbxt\n")
         if not xexpld:
             scr.write("bindtype 1\n")
             scr.write("xref bind *\n")
@@ -111,7 +111,7 @@ class Project:
         scr.write("xbind s *\n")
         scr.write("xbind lt *\n")
         if xexpld:
-            scr.write("bxt\n")
+            scr.write("tecbxt\n")
         if not xexpld:
             scr.write("bindtype 1\n")
             scr.write("xref bind *\n")
