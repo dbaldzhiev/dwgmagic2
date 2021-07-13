@@ -22,7 +22,7 @@ def getDir(path):
     return dwglist
 
 
-def tidy():
+def preprocess():
     path = os.getcwd()
     fns = getDir(os.getcwd())
     if not os.path.exists(str(path + "/scripts")):
@@ -31,13 +31,13 @@ def tidy():
         except:
             print("Scripts folder already exists")
 
-    if not os.path.exists(str(path + "originals")):
+    if not os.path.exists(str(path + "/originals")):
         try:
             os.mkdir("originals")
         except:
             print("Originals folder already exists")
 
-    if not os.path.exists(str(path + "derevitized")):
+    if not os.path.exists(str(path + "/derevitized")):
         try:
             os.mkdir("derevitized")
         except:
@@ -147,19 +147,25 @@ class Project:
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
         command = "{acc} /s {path}/scripts/DWGMAGIC.scr".format(acc=cfg.paths["acc"], path=os.getcwd())
-
         print("RUNNING: " + command)
+        logging.debug("RUNNING: {}".format(command))
         if cfg.verbose:
             print(command)
-        process = sp.Popen(command, stdout=sp.PIPE)
-        output, err = process.communicate()
+        process = sp.Popen(command, stdout=sp.PIPE, shell=True, universal_newlines=True)
+        while True:
+            line = process.stdout.readline()
+            if line != "":
+                print(line.decode("utf-16"))
+        # output, err = process.communicate()
         logging.debug(output.decode("utf-16"))
+
 
     def __init__(self):
         scr = open("./scripts/CHECKER.scr", "w+")
         scr.write("exit\n")
         scr.close()
-        self.filenames = getDir("{0}/derevitized/".format(os.getcwd()))
+        # self.filenames = getDir("{0}/derevitized/".format(os.getcwd()))
+        self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
         snl = self.filenameParser()
         snlindx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
         self.sheetNamesList = [x for y, x in sorted(zip(snlindx, snl))]
@@ -203,6 +209,7 @@ class Sheet:
                                                                                               sheet=self.sheetName,
                                                                                               script=self.sheetCleanerScript)
         # print(command)
+        logging.debug("RUNNING: {}".format(command))
         print(
             "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName, script=self.sheetCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
@@ -248,6 +255,7 @@ class View:
                                                                                              view=self.viewName,
                                                                                              script=self.viewCleanerScript)
         # print(command)
+        logging.debug("RUNNING: {}".format(command))
         print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
@@ -265,6 +273,7 @@ class View:
         output = [x[0] for x in xrefsList]
         if cfg.verbose:
             print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=view, x=output))
+        logging.debug("VIEW NAMED: {v} has the following XREFS:{x}".format(v=view, x=output))
         return output
 
     def __init__(self, vn):
