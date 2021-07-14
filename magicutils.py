@@ -165,12 +165,19 @@ class Project:
         self.PScript()
         self.MMMScript()
         self.MMMBAT()
-        timeout = time.time() + 90
+        timeout = time.time() + 20
         while True:
             if all([os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]) or time.time() > timeout:
                 break
             else:
+
+                print("Time left: {0}".format(timeout - time.time()))
+                for s in self.sheets:
+                    print("{0} EXISTS {1}".format(s.cleanSheetFilePath, os.path.isfile(s.cleanSheetFilePath)))
+
                 time.sleep(1)
+                for i in range(len(self.sheets)):
+                    print("\r")
 
         self.runPScript()
         logging.debug("COMPLETE")
