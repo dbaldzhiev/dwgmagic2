@@ -133,7 +133,7 @@ class Project:
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
-        scr.write("accoreconsole /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n")
+        scr.write("{acc} /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n".format(acc=cfg.paths["acc"]))
         scr.write("popd\n")
         scr.write("pause\n")
 
@@ -242,8 +242,9 @@ class View:
             print(output.decode("utf-16"))
 
     def getXfromV(self):
-        command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}.dwg".format(p=os.getcwd(),
-                                                                                               v=self.viewName)
+        command = "{acc} /s {path}/scripts/CHECKER.scr /i {path}\derevitized\{view}.dwg".format(acc=cfg.paths["acc"],
+                                                                                                path=os.getcwd(),
+                                                                                                view=self.viewName)
 
         try:
             process = sp.Popen(command, stdout=sp.PIPE)
