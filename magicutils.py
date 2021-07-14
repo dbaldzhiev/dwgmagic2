@@ -150,6 +150,23 @@ class Project:
         output, err = process.communicate()
         logging.debug(output)
 
+    def cleanSheetsExistenceChecker(self):
+        timeout = time.time() + 20
+        while True:
+            existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
+            if all([ex for sh, ex in existance]) or time.time() > timeout:
+                break
+            else:
+                print("Time left: {0}".format(timeout - time.time()))
+                for e in existance:
+                    print("{0} EXISTS {1}".format(e[0].cleanSheetFilePath, e[1]))
+                time.sleep(1)
+                for i in range(len(existance)):
+                    # cursor up one line
+                    sys.stdout.write('\x1b[1A')
+
+                    # delete last line
+                    sys.stdout.write('\x1b[2K')
 
     def __init__(self):
         scr = open("./scripts/CHECKER.scr", "w+")
@@ -165,21 +182,7 @@ class Project:
         self.PScript()
         self.MMMScript()
         self.MMMBAT()
-        timeout = time.time() + 20
-        CURSOR_UP = '\033[F'
-        ERASE_LINE = '\033[K'
-        while True:
-            existance = [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]
-            if all(existance) or time.time() > timeout:
-                break
-            else:
-                print("Time left: {0}".format(timeout - time.time()))
-                for s in self.sheets:
-                    print("{0} EXISTS {1}".format(s.cleanSheetFilePath, existance))
-                time.sleep(1)
-                for i in range(len(self.sheets)):
-                    print(CURSOR_UP + ERASE_LINE)
-
+        self.cleanSheetsExistenceChecker()
         self.runPScript()
         logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")

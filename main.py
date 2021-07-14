@@ -14,7 +14,6 @@ except:
 
 def display_title_bar():
     # Clears the terminal screen, and displays a title bar.
-    os.system('clear')
 
     print("\t**********************************************")
     print("\t***  Greeter - Hello old and new friends!  ***")
