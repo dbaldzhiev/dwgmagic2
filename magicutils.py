@@ -242,8 +242,8 @@ class View:
             print(output.decode("utf-16"))
 
     def getXfromV(self):
-        command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(),
-                                                                                           v=self.viewName)
+        command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}.dwg".format(p=os.getcwd(),
+                                                                                               v=self.viewName)
 
         try:
             process = sp.Popen(command, stdout=sp.PIPE)
