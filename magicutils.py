@@ -244,9 +244,15 @@ class View:
     def getXfromV(self):
         command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(),
                                                                                            v=self.viewName)
-        process = sp.Popen(command, stdout=sp.PIPE)
-        cmdoutput, err = process.communicate()
-        cmdoutput = cmdoutput.decode("utf-16")
+
+        try:
+            process = sp.Popen(command, stdout=sp.PIPE)
+            cmdoutput, err = process.communicate()
+            cmdoutput = cmdoutput.decode("utf-16")
+
+        except e as Exception:
+            print(command)
+            print(e)
         xrefsRegex = re.compile("\"(.*)\" loaded: (.*)")
         xrefsList = xrefsRegex.findall(cmdoutput)
         # output = [x[0] for x in xrefsList]
