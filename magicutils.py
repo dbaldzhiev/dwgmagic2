@@ -13,14 +13,10 @@ import config as cfg
 
 
 def getDir(path):
-    list = os.listdir(path)
-    dwglist = []
-    for l in list:
-        if l.endswith(".dwg"):
-            dwglist.append(l)
-    if len(dwglist) < 1:
+    output = [l for l in os.listdir(path) if l.endswith(".dwg")]
+    if len(output) < 1:
         sys.exit('THERE ARE NO FILES')
-    return dwglist
+    return output
 
 def preprocess():
     path = os.getcwd()
@@ -52,11 +48,8 @@ def preprocess():
     logging.debug("TIDY COMPLETE")
 
 class Project:
-    def filenameParser(self):
-        out = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]
-        return out
 
-    def PScript(self, xexpld):
+    def PScript(self):
         scr = open("./scripts/DWGMAGIC.scr", "w+")
         scr.write("INSUNITS 5\n")
         for sheet in self.sheetNamesList:
@@ -77,9 +70,9 @@ class Project:
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
         scr.write("xbind lt *\n")
-        if xexpld:
+        if self.xrefXplodeToggle:
             scr.write("tecbxt\n")
-        if not xexpld:
+        if not self.xrefXplodeToggle:
             scr.write("bindtype 1\n")
             scr.write("xref bind *\n")
             scr.write("xplode all\n")
@@ -103,16 +96,16 @@ class Project:
         scr.write("save {0}/MASTERMERGED.dwg\n".format(os.getcwd()))
         scr.close()
 
-    def MMMScript(self, xexpld):
+    def MMMScript(self):
         scr = open("./scripts/MMM.scr", "w+")
         scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
         scr.write("xbind lt *\n")
-        if xexpld:
+        if self.xrefXplodeToggle:
             scr.write("tecbxt\n")
-        if not xexpld:
+        if not self.xrefXplodeToggle:
             scr.write("bindtype 1\n")
             scr.write("xref bind *\n")
             scr.write("xplode all\n")
@@ -162,41 +155,37 @@ class Project:
         scr.write("exit\n")
         scr.close()
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
-        snl = self.filenameParser()
-        snlindx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
-        self.sheetNamesList = [x for y, x in sorted(zip(snlindx, snl))]
-        self.xrefXploder = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
+        snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]
+        snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
+        self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
+        self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
         self.sheets = jb.Parallel(n_jobs=-1, verbose=100)(
             jb.delayed(Sheet)(s, self.filenames) for s in self.sheetNamesList)
-        self.PScript(self.xrefXploder)
-        self.MMMScript(self.xrefXploder)
+        self.PScript()
+        self.MMMScript()
         self.MMMBAT()
         self.runPScript()
         logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")
 
 class Sheet:
-    def viewsOnSheetGetter(self, ind, fns):
-        floatRegex = re.compile(str(ind) + "-View-\d+")
-        rawViewList = list(filter(floatRegex.match, fns))
-        return rawViewList
 
     def SScript(self):
-        scrMaster = open("./scripts/{0}".format(self.sheetCleanerScript), "w+")
-        scrMaster.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
-        scrMaster.write("tecrnxref\n")
-        scrMaster.write("tecfixms\n")
-        scrMaster.write("layout set Layout1\n")
-        scrMaster.write("zoom all\n")
-        scrMaster.write("chspace all\n")
-        scrMaster.write("\n")
-        scrMaster.write("\n")
-        scrMaster.write("(command)\n")
-        scrMaster.write("model\n")
-        scrMaster.write("xref t * r\n")
-        scrMaster.write("zoom all\n")
-        scrMaster.write("save ./derevitized/{0}_xrefed.dwg\n".format(self.sheetName))
-        scrMaster.close()
+        scr = open("./scripts/{0}".format(self.sheetCleanerScript), "w+")
+        scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
+        scr.write("tecrnxref\n")
+        scr.write("tecfixms\n")
+        scr.write("layout set Layout1\n")
+        scr.write("zoom all\n")
+        scr.write("chspace all\n")
+        scr.write("\n")
+        scr.write("\n")
+        scr.write("(command)\n")
+        scr.write("model\n")
+        scr.write("xref t * r\n")
+        scr.write("zoom all\n")
+        scr.write("save ./derevitized/{0}_xrefed.dwg\n".format(self.sheetName))
+        scr.close()
 
     def runSheetCleaner(self):
         command = "{acc} /i {path}/derevitized/{sheet}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
@@ -207,14 +196,14 @@ class Sheet:
             print(
                 "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,
                                                                      script=self.sheetCleanerScript))
-        process = sp.Popen(command, stdout=sp.PIPE)
-        output, err = process.communicate()
+        sp.Popen(command, stdout=sp.PIPE)
+        # output, err = process.communicate()
 
     def __init__(self, sn, fns):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
         self.sheetName = sn[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
-        self.viewNamesOnSheetList = self.viewsOnSheetGetter(self.sheetIndx, fns)
+        self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, fns))
         self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
         self.runSheetCleaner()
@@ -222,13 +211,13 @@ class Sheet:
 class View:
 
     def VScript(self):
-        scrSlave = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
-        scrSlave.write("(command)\n")
-        scrSlave.write("model\n")
-        scrSlave.write("xref t * r\n")
-        scrSlave.write("zoom all\n")
-        scrSlave.write("qsave\n")
-        scrSlave.close()
+        scr = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
+        scr.write("(command)\n")
+        scr.write("model\n")
+        scr.write("xref t * r\n")
+        scr.write("zoom all\n")
+        scr.write("qsave\n")
+        scr.close()
 
     def runViewCleaner(self):
         command = "{acc} /i {path}/derevitized/{view}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
@@ -243,8 +232,9 @@ class View:
         if cfg.verbose:
             print(output.decode("utf-16"))
 
-    def getXfromV(self, view):
-        command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(), v=view)
+    def getXfromV(self):
+        command = "accoreconsole /s {p}/scripts/CHECKER.scr /i {p}\derevitized\{v}".format(p=os.getcwd(),
+                                                                                           v=self.viewName)
         process = sp.Popen(command, stdout=sp.PIPE)
         cmdoutput, err = process.communicate()
         cmdoutput = cmdoutput.decode("utf-16")
@@ -252,7 +242,7 @@ class View:
         xrefsList = xrefsRegex.findall(cmdoutput)
         output = [x[0] for x in xrefsList]
         if cfg.verbose:
-            print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=view, x=output))
+            print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=self.viewName, x=output))
         return output
 
     def __init__(self, vn):
@@ -261,7 +251,7 @@ class View:
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
         self.viewPath = ""
         self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx, self.viewIndx)
-        self.xrefs = self.getXfromV(self.viewName)
+        self.xrefs = self.getXfromV()
         self.VScript()
         self.runViewCleaner()
 
