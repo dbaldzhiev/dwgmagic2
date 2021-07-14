@@ -4,6 +4,7 @@ import re
 import shlex
 import subprocess as sp
 import sys
+import time
 from shutil import copy
 
 import click
@@ -164,6 +165,13 @@ class Project:
         self.PScript()
         self.MMMScript()
         self.MMMBAT()
+        timeout = time.time() + 90
+        while True:
+            if all([os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]) or time.time() > timeout:
+                break
+            else:
+                time.sleep(1)
+
         self.runPScript()
         logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")
@@ -207,6 +215,7 @@ class Sheet:
         self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
         self.runSheetCleaner()
+        self.cleanSheetFilePath = "{0}/derevitized/{1}_xrefed.dwg".format(os.getcwd(), self.sheetName)
 
 class View:
 
