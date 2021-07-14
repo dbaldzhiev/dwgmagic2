@@ -155,18 +155,16 @@ class Project:
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
+                print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
                 break
             else:
                 print("Time left: {0}".format(timeout - time.time()))
                 for e in existance:
-                    print("{0} EXISTS {1}".format(e[0].cleanSheetFilePath, e[1]))
+                    print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
                 time.sleep(1)
                 for i in range(len(existance)):
-                    # cursor up one line
-                    sys.stdout.write('\x1b[1A')
+                    os.system('cls')
 
-                    # delete last line
-                    sys.stdout.write('\x1b[2K')
 
     def __init__(self):
         scr = open("./scripts/CHECKER.scr", "w+")
