@@ -166,18 +166,19 @@ class Project:
         self.MMMScript()
         self.MMMBAT()
         timeout = time.time() + 20
+        CURSOR_UP = '\033[F'
+        ERASE_LINE = '\033[K'
         while True:
-            if all([os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]) or time.time() > timeout:
+            existance = [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]
+            if all(existance) or time.time() > timeout:
                 break
             else:
-
                 print("Time left: {0}".format(timeout - time.time()))
                 for s in self.sheets:
-                    print("{0} EXISTS {1}".format(s.cleanSheetFilePath, os.path.isfile(s.cleanSheetFilePath)))
-
+                    print("{0} EXISTS {1}".format(s.cleanSheetFilePath, existance))
                 time.sleep(1)
                 for i in range(len(self.sheets)):
-                    print("\r")
+                    print(CURSOR_UP + ERASE_LINE)
 
         self.runPScript()
         logging.debug("COMPLETE")
