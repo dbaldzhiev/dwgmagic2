@@ -133,7 +133,7 @@ class Project:
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
-        scr.write("{acc} /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n".format(acc=cfg.paths["acc"]))
+        scr.write("'{acc}' /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n".format(acc=cfg.paths["acc"]))
         scr.write("popd\n")
         scr.write("pause\n")
 

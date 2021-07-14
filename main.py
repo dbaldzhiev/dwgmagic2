@@ -16,8 +16,12 @@ def display_title_bar():
     # Clears the terminal screen, and displays a title bar.
 
     print("\t**********************************************")
-    print("\t***  Greeter - Hello old and new friends!  ***")
-    print("\t**********************************************")
+    print("\t______________________________________________")
+    print("\t**************   DWGMAGIC   ******************")
+    print("\t______________________________________________")
+    print("\t****  TECTONICA - Dimitar Baldzhiev  *********")
+    print("\t______________________________________________")
+    print("\t******************************************V2**")
 
 
 def main():
@@ -29,7 +33,6 @@ def main():
     logging.debug("Chnaging DIR to " + path)
     mu.preprocess()
     mu.Project()
-    print("bp")
 
 if __name__ == "__main__":
     if debugflag:
