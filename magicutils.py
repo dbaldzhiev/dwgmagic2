@@ -160,7 +160,7 @@ class Project:
         self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
         self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
         self.sheets = jb.Parallel(n_jobs=-1, verbose=100)(
-            jb.delayed(Sheet)(s, self.filenames) for s in self.sheetNamesList)
+            jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
         self.PScript()
         self.MMMScript()
         self.MMMBAT()
@@ -199,11 +199,11 @@ class Sheet:
         sp.Popen(command, stdout=sp.PIPE)
         # output, err = process.communicate()
 
-    def __init__(self, sn, fns):
+    def __init__(self, sn, project):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
         self.sheetName = sn[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
-        self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, fns))
+        self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, project.filenames))
         self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
         self.runSheetCleaner()
@@ -240,7 +240,8 @@ class View:
         cmdoutput = cmdoutput.decode("utf-16")
         xrefsRegex = re.compile("\"(.*)\" loaded: (.*)")
         xrefsList = xrefsRegex.findall(cmdoutput)
-        output = [x[0] for x in xrefsList]
+        # output = [x[0] for x in xrefsList]
+        output = xrefsList
         if cfg.verbose:
             print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=self.viewName, x=output))
         return output
@@ -251,12 +252,12 @@ class View:
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
         self.viewPath = ""
         self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx, self.viewIndx)
-        self.xrefs = self.getXfromV()
+        self.xrefs = [Xref(x[0], x[1]) for x in self.getXfromV()]
         self.VScript()
         self.runViewCleaner()
 
 
 class Xref:
-    def __init__(self):
-        self.xrefName = ""
-        self.xrefPath = ""
+    def __init__(self, name, path):
+        self.xrefName = name
+        self.xrefPath = path

@@ -18,6 +18,7 @@ def main():
     logging.debug("Chnaging DIR to " + path)
     mu.preprocess()
     mu.Project()
+    print("bp")
 
 if __name__ == "__main__":
     if debugflag:
