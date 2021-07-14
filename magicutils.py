@@ -161,7 +161,7 @@ class Project:
                 print("Time left: {0}".format(timeout - time.time()))
                 for e in existance:
                     print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
-                time.sleep(1)
+                time.sleep(0.25)
                 for i in range(len(existance)):
                     os.system('cls')
 
