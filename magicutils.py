@@ -249,8 +249,7 @@ class View:
             process = sp.Popen(command, stdout=sp.PIPE)
             cmdoutput, err = process.communicate()
             cmdoutput = cmdoutput.decode("utf-16")
-
-        except e as Exception:
+        except Exception as e:
             print(command)
             print(e)
         xrefsRegex = re.compile("\"(.*)\" loaded: (.*)")
