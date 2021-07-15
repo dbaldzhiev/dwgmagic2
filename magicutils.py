@@ -97,9 +97,10 @@ class Project:
         scr.write("zoom all\n")
         scr.write("filedia 0\n")
         scr.write("saveas\n")
-        scr.write("2004\n")
+        scr.write("2007\n")
         scr.write("{0}/MASTERMERGED.dwg\n".format(os.getcwd()))
         scr.write("filedia 1\n")
+        scr.write("qsave\n")
         scr.close()
 
     def MMMScript(self):
@@ -137,8 +138,7 @@ class Project:
         scr.write("2007\n")
         scr.write("{0}/MANUALMASTERMERGED.dwg\n".format(os.getcwd()))
         scr.write("filedia 1\n")
-        scr.write("save\n")
-        scr.write("exit\n")
+        scr.write("qsave\n")
         scr.close()
 
     def MMMBAT(self):
