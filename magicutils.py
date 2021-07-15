@@ -155,7 +155,8 @@ class Project:
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
-                print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
+                for e in existance:
+                    print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
                 break
             else:
                 print("Time left: {0}".format(timeout - time.time()))
