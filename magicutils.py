@@ -67,7 +67,10 @@ class Project:
         scr.write("tecarxref\n")
         scr.write("zoom e\n")
         scr.write("lwdisplay on\n")
-        scr.write("save {p}/MASTERXREFED.dwg\n".format(p=os.getcwd()))
+        scr.write("filedia 0\n")
+        scr.write("saveas\n")
+        scr.write("2007\n")
+        scr.write("{0}\MASTERXREFED.dwg\n".format(os.getcwd()))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
@@ -95,10 +98,9 @@ class Project:
         scr.write("-purge all * n\n")
         scr.write("audit y\n")
         scr.write("zoom all\n")
-        scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("{0}/MASTERMERGED.dwg\n".format(os.getcwd()))
+        scr.write("{0}\MASTERMERGED.dwg\n".format(os.getcwd()))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -136,7 +138,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("{0}/MANUALMASTERMERGED.dwg\n".format(os.getcwd()))
+        scr.write("{0}\MANUALMASTERMERGED.dwg\n".format(os.getcwd()))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -161,6 +163,7 @@ class Project:
                     print(line.strip("\n"))
         output, err = process.communicate()
         logging.debug(output)
+        os.remove("{0}/MASTERMERGED.bak".format(os.getcwd()))
 
     def cleanSheetsExistenceChecker(self):
         timeout = time.time() + 20
@@ -216,6 +219,7 @@ class Sheet:
             scr.write("xref t * r\n")
         scr.write("zoom all\n")
         scr.write("save ./derevitized/{0}_xrefed.dwg\n".format(self.sheetName))
+        scr.write("exit\n")
         scr.close()
 
     def runSheetCleaner(self):
@@ -227,12 +231,21 @@ class Sheet:
             print(
                 "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,
                                                                      script=self.sheetCleanerScript))
-        sp.Popen(command, stdout=sp.PIPE)
+        process = sp.Popen(command, stdout=sp.PIPE)
+        output, err = process.communicate()
+        os.remove("{0}/derevitized/{1}".format(os.getcwd(), self.workingFile))
+        if cfg.verbose:
+            print(output.decode("utf-16"))
+        # while True:
+        #    if proc.poll() is not None:
+        #        os.remove("{0}/{1}".format(os.getcwd(), self.workingFile))
+        #        break
         # output, err = process.communicate()
 
     def __init__(self, sn, project):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
-        self.sheetName = sn[:-4]
+        self.workingFile = sn
+        self.sheetName = self.workingFile[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, project.filenames))
         # self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
