@@ -9,6 +9,7 @@ from shutil import copy
 
 import click
 import joblib as jb
+from colorama import Back
 
 import config as cfg
 
@@ -57,11 +58,11 @@ class Project:
             scr.write("xref\n")
             scr.write("attach\n")
             scr.write("{p}/derevitized/{s}_xrefed.dwg\n".format(p=os.getcwd(), s=sheet[:-4]))
-
             scr.write("0,0,0\n")
             scr.write("\n")  # x scalefactor
             scr.write("\n")  # y scalefactor
             scr.write("\n")  # rotation
+        scr.write("xref t * r\n")
         scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
         scr.write("tecarxref\n")
         scr.write("zoom e\n")
@@ -146,7 +147,8 @@ class Project:
         while process.poll() is None:
             line = process.stdout.readline()
             if line != "":
-                print(line)
+                if line != "\n":
+                    print(line.strip("\n"))
         output, err = process.communicate()
         logging.debug(output)
 
@@ -155,16 +157,15 @@ class Project:
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
-                for e in existance:
-                    print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
+                print("\n".join(["{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
                 break
             else:
                 print("Time left: {0}".format(timeout - time.time()))
-                for e in existance:
-                    print("{0} is {1}".format(e[0].cleanSheetFilePath, e[1]))
+                print("\n".join([Back.GREEN + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) if e[
+                    1] else Back.RED + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
                 time.sleep(1)
-                for i in range(len(existance)):
-                    os.system('cls')
+                print(Back.RESET)
+                os.system('cls')
 
 
     def __init__(self):
@@ -224,7 +225,9 @@ class Sheet:
         self.sheetName = sn[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, project.filenames))
-        self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
+        # self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
+        self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
+        # self.sheets = jb.Parallel(n_jobs=-1, batch_size=1, verbose=100)(jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
         self.SScript()
         self.runSheetCleaner()
         self.cleanSheetFilePath = "{0}/derevitized/{1}_xrefed.dwg".format(os.getcwd(), self.sheetName)
