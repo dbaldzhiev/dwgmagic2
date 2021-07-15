@@ -175,7 +175,7 @@ class Project:
         snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
         self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
         self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True)
-        self.sheets = jb.Parallel(n_jobs=-1, verbose=100)(
+        self.sheets = jb.Parallel(n_jobs=-1, batch_size=1, verbose=100)(
             jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
         self.PScript()
         self.MMMScript()
@@ -189,9 +189,10 @@ class Sheet:
 
     def SScript(self):
         scr = open("./scripts/{0}".format(self.sheetCleanerScript), "w+")
-        scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
-        scr.write("tecrnxref\n")
-        scr.write("tecfixms\n")
+        if len(self.viewsOnSheet) > 0:
+            scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
+            scr.write("tecrnxref\n")
+            scr.write("tecfixms\n")
         scr.write("layout set Layout1\n")
         scr.write("zoom all\n")
         scr.write("chspace all\n")
@@ -199,7 +200,8 @@ class Sheet:
         scr.write("\n")
         scr.write("(command)\n")
         scr.write("model\n")
-        scr.write("xref t * r\n")
+        if len(self.viewsOnSheet) > 0:
+            scr.write("xref t * r\n")
         scr.write("zoom all\n")
         scr.write("save ./derevitized/{0}_xrefed.dwg\n".format(self.sheetName))
         scr.close()
