@@ -166,7 +166,7 @@ class Project:
         os.remove("{0}/MASTERMERGED.bak".format(os.getcwd()))
 
     def cleanSheetsExistenceChecker(self):
-        timeout = time.time() + 20
+        timeout = time.time() + 120
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
