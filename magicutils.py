@@ -297,13 +297,13 @@ class View:
             process = sp.Popen(command, stdout=sp.PIPE)
             cmdoutput, err = process.communicate()
             cmdoutput = cmdoutput.decode("utf-16")
+            xrefsRegex = re.compile("\"(.*)\" loaded: (.*)")
+            xrefsList = xrefsRegex.findall(cmdoutput)
+            output = xrefsList
         except Exception as e:
             print(command)
             print(e)
-        xrefsRegex = re.compile("\"(.*)\" loaded: (.*)")
-        xrefsList = xrefsRegex.findall(cmdoutput)
-        # output = [x[0] for x in xrefsList]
-        output = xrefsList
+
         if cfg.verbose:
             print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=self.viewName, x=output))
         return output
