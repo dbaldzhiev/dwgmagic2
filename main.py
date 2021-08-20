@@ -26,6 +26,7 @@ def display_title_bar():
 
 def main():
     path = sys.argv[1]
+    print(path)
     display_title_bar()
     os.chdir(path)
     logging.basicConfig(filename='acclog.log', level=logging.DEBUG)

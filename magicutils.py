@@ -57,7 +57,7 @@ class Project:
         for sheet in self.sheetNamesList:
             scr.write("xref\n")
             scr.write("attach\n")
-            scr.write("{p}/derevitized/{s}_xrefed.dwg\n".format(p=os.getcwd(), s=sheet[:-4]))
+            scr.write("\"{p}/derevitized/{s}_xrefed.dwg\"\n".format(p=os.getcwd(), s=sheet[:-4]))
             scr.write("0,0,0\n")
             scr.write("\n")  # x scalefactor
             scr.write("\n")  # y scalefactor
@@ -70,7 +70,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("{0}\MASTERXREFED.dwg\n".format(os.getcwd()))
+        scr.write("\"{0}\MASTERXREFED.dwg\"\n".format(os.getcwd()))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
@@ -100,7 +100,7 @@ class Project:
         scr.write("zoom all\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("{0}\MASTERMERGED.dwg\n".format(os.getcwd()))
+        scr.write("\"{0}\MASTERMERGED.dwg\"\n".format(os.getcwd()))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -138,7 +138,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("{0}\MANUALMASTERMERGED.dwg\n".format(os.getcwd()))
+        scr.write("\"{0}\MANUALMASTERMERGED.dwg\"\n".format(os.getcwd()))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -146,13 +146,13 @@ class Project:
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
-        scr.write("\"{acc}\" /i %cd%/MASTERXREFED.dwg /s %cd%/scripts/MMM.scr\n".format(acc=cfg.paths["acc"]))
+        scr.write("\"{acc}\" /i \"%cd%/MASTERXREFED.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=cfg.paths["acc"]))
         scr.write("popd\n")
         scr.write("pause\n")
 
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
-        command = "'{acc}' /s '{path}/scripts/DWGMAGIC.scr'".format(acc=cfg.paths["acc"], path=os.getcwd())
+        command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=cfg.paths["acc"], path=os.getcwd())
         print("RUNNING: " + command)
         logging.debug("RUNNING: {}".format(command))
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
@@ -163,7 +163,10 @@ class Project:
                     print(line.strip("\n"))
         output, err = process.communicate()
         logging.debug(output)
-        os.remove("{0}/MASTERMERGED.bak".format(os.getcwd()))
+        try:
+            os.remove("{0}/MASTERMERGED.bak".format(os.getcwd()))
+        except Exception as e:
+            pass
 
     def cleanSheetsExistenceChecker(self):
         timeout = time.time() + 120
@@ -223,15 +226,20 @@ class Sheet:
         scr.close()
 
     def runSheetCleaner(self):
-        command = "{acc} /i {path}/derevitized/{sheet}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
-                                                                                              path=os.getcwd(),
-                                                                                              sheet=self.sheetName,
-                                                                                              script=self.sheetCleanerScript)
+        command = "{acc} /i \"{path}/derevitized/{sheet}.dwg\" /s \"{path}/scripts/{script}\"".format(
+            acc=cfg.paths["acc"],
+            path=os.getcwd(),
+            sheet=self.sheetName,
+            script=self.sheetCleanerScript)
         if cfg.verbose:
+            print("###############")
             print(
                 "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,
                                                                      script=self.sheetCleanerScript))
+            print(Back.GREEN + command)
+
         process = sp.Popen(command, stdout=sp.PIPE)
+
         output, err = process.communicate()
         os.remove("{0}/derevitized/{1}".format(os.getcwd(), self.workingFile))
         if cfg.verbose:
@@ -267,10 +275,11 @@ class View:
         scr.close()
 
     def runViewCleaner(self):
-        command = "{acc} /i {path}/derevitized/{view}.dwg /s {path}/scripts/{script}".format(acc=cfg.paths["acc"],
-                                                                                             path=os.getcwd(),
-                                                                                             view=self.viewName,
-                                                                                             script=self.viewCleanerScript)
+        command = "{acc} /i \"{path}/derevitized/{view}.dwg\" /s \"{path}/scripts/{script}\"".format(
+            acc=cfg.paths["acc"],
+            path=os.getcwd(),
+            view=self.viewName,
+            script=self.viewCleanerScript)
         # print(command)
         if cfg.verbose:
             print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
