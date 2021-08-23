@@ -14,12 +14,15 @@ from colorama import Back
 import config as cfg
 
 
+# Getting dwg files in a path
 def getDir(path):
     output = [l for l in os.listdir(path) if l.endswith(".dwg")]
     if len(output) < 1:
         sys.exit('THERE ARE NO FILES')
     return output
 
+
+# ordering the folder so it has the folders scripts, originals and derevitized and copying the dwgs in the proper places
 def preprocess():
     path = os.getcwd()
     fns = getDir(os.getcwd())
@@ -49,8 +52,10 @@ def preprocess():
     print("TIDY COMPLETE")
     logging.debug("TIDY COMPLETE")
 
-class Project:
 
+#The general PROJECT CLASS
+class Project:
+    #The scrtipt that attaches all xrefs and explodes them saves MASTERMERGED.DWG
     def PScript(self):
         scr = open("./scripts/DWGMAGIC.scr", "w+")
         scr.write("INSUNITS 5\n")
@@ -105,6 +110,7 @@ class Project:
         scr.write("qsave\n")
         scr.close()
 
+    #Making MANUAL master merge script
     def MMMScript(self):
         scr = open("./scripts/MMM.scr", "w+")
         scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
@@ -143,6 +149,7 @@ class Project:
         scr.write("qsave\n")
         scr.close()
 
+    #Making the bat file that uses manual master merge script
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
@@ -150,6 +157,7 @@ class Project:
         scr.write("popd\n")
         scr.write("pause\n")
 
+    #Running the master merge script
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
         command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=cfg.paths["acc"], path=os.getcwd())
@@ -168,6 +176,7 @@ class Project:
         except Exception as e:
             pass
 
+    #checkin if all xrefs are done derevitizing and can be passed to master merge
     def cleanSheetsExistenceChecker(self):
         timeout = time.time() + 120
         while True:
@@ -185,9 +194,6 @@ class Project:
 
 
     def __init__(self):
-        scr = open("./scripts/CHECKER.scr", "w+")
-        scr.write("exit\n")
-        scr.close()
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
         snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]
         snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))
@@ -244,11 +250,7 @@ class Sheet:
         os.remove("{0}/derevitized/{1}".format(os.getcwd(), self.workingFile))
         if cfg.verbose:
             print(output.decode("utf-16"))
-        # while True:
-        #    if proc.poll() is not None:
-        #        os.remove("{0}/{1}".format(os.getcwd(), self.workingFile))
-        #        break
-        # output, err = process.communicate()
+
 
     def __init__(self, sn, project):
         self.sheetIndx = re.compile("\d+").search(sn)[0]
@@ -256,9 +258,7 @@ class Sheet:
         self.sheetName = self.workingFile[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, project.filenames))
-        # self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
-        # self.sheets = jb.Parallel(n_jobs=-1, batch_size=1, verbose=100)(jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
         self.SScript()
         self.runSheetCleaner()
         self.cleanSheetFilePath = "{0}/derevitized/{1}_xrefed.dwg".format(os.getcwd(), self.sheetName)
@@ -280,7 +280,6 @@ class View:
             path=os.getcwd(),
             view=self.viewName,
             script=self.viewCleanerScript)
-        # print(command)
         if cfg.verbose:
             print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
