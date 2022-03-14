@@ -195,11 +195,10 @@ class Project:
 
     def __init__(self):
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
-        # snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None] #before 220314
-        snl = [fname for fname in self.filenames if
-               re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None]
-        # snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl))))) #befor 220314
-        snlIndx = [s.replace(".dwg", "") for s in snl]
+        snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]  # before 220314
+        # snl = [fname for fname in self.filenames if re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None]
+        snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))  # befor 220314
+        # snlIndx = [s.replace(".dwg", "") for s in snl]
         self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
         # self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True) #before 220314
         self.xrefXplodeToggle = True
