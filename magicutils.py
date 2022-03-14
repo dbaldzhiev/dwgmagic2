@@ -75,7 +75,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1}_MASTERXREFED.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"{0}\{1}_MXR.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
@@ -105,7 +105,7 @@ class Project:
         scr.write("zoom all\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1}_MASTERMERGED.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"{0}\{1}_MM.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -144,7 +144,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\MANUALMASTERMERGED.dwg\"\n".format(os.getcwd()))
+        scr.write("\"{0}\{1}_MMM.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -172,7 +172,8 @@ class Project:
         output, err = process.communicate()
         logging.debug(output)
         try:
-            os.remove("{0}/MASTERMERGED.bak".format(os.getcwd()))
+            os.remove("{0}\{1}_MM.bak".format(os.getcwd(), os.path.basename(os.getcwd())))
+
         except Exception as e:
             pass
 
