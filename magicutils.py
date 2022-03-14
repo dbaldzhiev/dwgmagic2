@@ -75,7 +75,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1]_MASTERXREFED.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"{0}\{1}_MASTERXREFED.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
