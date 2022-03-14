@@ -4,3 +4,4 @@ paths = {
     "dmm": "C:/dwgmagic2",  # tools path
 }
 verbose = False
+xrefXplodeToggle = True

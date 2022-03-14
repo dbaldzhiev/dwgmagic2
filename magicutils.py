@@ -61,7 +61,7 @@ class Project:
         for sheet in self.sheetNamesList:
             scr.write("xref\n")
             scr.write("attach\n")
-            scr.write("\"{p}/derevitized/{s}_xrefed.dwg\"\n".format(p=os.getcwd(), s=sheet[:-4]))
+            scr.write("\"./derevitized/{s}_xrefed.dwg\"\n".format(p=os.getcwd(), s=sheet[:-4]))
             scr.write("0,0,0\n")
             scr.write("\n")  # x scalefactor
             scr.write("\n")  # y scalefactor
@@ -74,7 +74,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1}_MXR.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"./{0}_MXR.dwg\"\n".format(os.path.basename(os.getcwd())))
         scr.write("visretain 0\n")
         scr.write("xbind d *\n")
         scr.write("xbind s *\n")
@@ -104,7 +104,7 @@ class Project:
         scr.write("zoom all\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1}_MM.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"./{0}_MM.dwg\"\n".format(os.path.basename(os.getcwd())))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -143,7 +143,7 @@ class Project:
         scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
-        scr.write("\"{0}\{1}_MMM.dwg\"\n".format(os.getcwd(), os.path.basename(os.getcwd())))
+        scr.write("\"./{0}_MMM.dwg\"\n".format(os.path.basename(os.getcwd())))
         scr.write("filedia 1\n")
         scr.write("qsave\n")
         scr.close()
@@ -152,7 +152,9 @@ class Project:
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
-        scr.write("\"{acc}\" /i \"%cd%/MASTERXREFED.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=cfg.paths["acc"]))
+        scr.write("\"{acc}\" /i \"%cd%/{n}_MXR.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=cfg.paths["acc"],
+                                                                                           n=os.path.basename(
+                                                                                               os.getcwd())))
         scr.write("popd\n")
         scr.write("pause\n")
 
@@ -171,7 +173,7 @@ class Project:
         output, err = process.communicate()
         logging.debug(output)
         try:
-            os.remove("{0}\{1}_MM.bak".format(os.getcwd(), os.path.basename(os.getcwd())))
+            os.remove("{0}_MM.bak".format(os.path.basename(os.getcwd())))
 
         except Exception as e:
             pass
