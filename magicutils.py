@@ -195,10 +195,11 @@ class Project:
 
     def __init__(self):
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
-        snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]  # before 220314
-        # snl = [fname for fname in self.filenames if re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None]
-        snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))  # befor 220314
-        # snlIndx = [s.replace(".dwg", "") for s in snl]
+        # snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]  # before 220314
+        snl = [fname for fname in self.filenames if
+               re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None]
+        # snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))  # befor 220314
+        snlIndx = [s.replace(".dwg", "") for s in snl]
         self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
         # self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True) #before 220314
         self.xrefXplodeToggle = True
@@ -256,11 +257,10 @@ class Sheet:
 
 
     def __init__(self, sn, project):
-        self.sheetIndx = re.compile("\d+").search(sn)[0]
+        self.sheetName = sn.replace(".dwg", "")
         self.workingFile = sn
-        self.sheetName = self.workingFile[:-4]
         self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
-        self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetIndx) + "-View-\d+").match, project.filenames))
+        self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetName) + "-View-\d+").match, project.filenames))
         self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
         self.SScript()
         self.runSheetCleaner()
