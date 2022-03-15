@@ -140,7 +140,7 @@ class Project:
         scr.write("-purge all * n\n")
         scr.write("audit y\n")
         scr.write("zoom all\n")
-        scr.write("filedia 0\n")
+        # scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
         scr.write("\"./{0}_MMM.dwg\"\n".format(os.path.basename(os.getcwd())))
@@ -244,11 +244,13 @@ class Sheet:
             sheet=self.sheetName,
             script=self.sheetCleanerScript)
         if cfg.verbose:
+            print(Back.GREEN)
             print("###############")
             print(
                 "CLEANING SHEET {sheet} with SCRIPT {script}".format(sheet=self.sheetName,
                                                                      script=self.sheetCleanerScript))
-            print(Back.GREEN + command)
+            print(command)
+            print(Back.RESET)
 
         process = sp.Popen(command, stdout=sp.PIPE)
 
@@ -313,10 +315,10 @@ class View:
         return output
 
     def __init__(self, vn):
-        self.viewName = vn[:-4]
+        # self.viewName = vn[:-4]
+        self.viewName = vn.replace(".dwg", "")
         self.viewIndx = str(re.compile("\d+-View-(\d+).dwg").search(vn).group(1))
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
-        self.viewPath = ""
         self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx, self.viewIndx)
         self.xrefs = [Xref(x[0], x[1]) for x in self.getXfromV()]
         self.VScript()
