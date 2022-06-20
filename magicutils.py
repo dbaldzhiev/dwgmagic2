@@ -51,7 +51,6 @@ def preprocess():
     print("TIDY COMPLETE")
     logging.debug("TIDY COMPLETE")
 
-
 #The general PROJECT CLASS
 class Project:
     #The scrtipt that attaches all xrefs and explodes them saves MASTERMERGED.DWG
@@ -180,7 +179,7 @@ class Project:
 
     #checkin if all xrefs are done derevitizing and can be passed to master merge
     def cleanSheetsExistenceChecker(self):
-        timeout = time.time() + 120
+        timeout = time.time() + cfg.deadline
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
@@ -198,15 +197,19 @@ class Project:
     def __init__(self):
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
         # snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]  # before 220314
+        # snl = [fname for fname in self.filenames if re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None] # before 220620
         snl = [fname for fname in self.filenames if
-               re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None]
+               re.compile("(^(\w*?-\d+)|^(\d+)(?!(?:-View-)|(?:-rvt-)))(\.dwg)").match(fname) is not None]
         # snlIndx = list(map(int, (list(map(lambda x: x[:-4], snl)))))  # befor 220314
         snlIndx = [s.replace(".dwg", "") for s in snl]
         self.sheetNamesList = [x for y, x in sorted(zip(snlIndx, snl))]
         # self.xrefXplodeToggle = click.confirm('Do you want to explode the Xrefs in Views?', default=True) #before 220314
         self.xrefXplodeToggle = True
-        self.sheets = jb.Parallel(n_jobs=-1, batch_size=1, verbose=100)(
-            jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
+        if cfg.threaded:
+            self.sheets = jb.Parallel(n_jobs=-1, batch_size=1, verbose=100)(
+                jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
+        else:
+            self.sheets = [Sheet(s, self) for s in self.sheetNamesList]
         self.PScript()
         self.MMMScript()
         self.MMMBAT()
@@ -263,9 +266,13 @@ class Sheet:
     def __init__(self, sn, project):
         self.sheetName = sn.replace(".dwg", "")
         self.workingFile = sn
-        self.sheetCleanerScript = "SHEET_{0}_cln.scr".format(self.sheetName)
+        self.sheetCleanerScript = "{0}_SHEET.scr".format(self.sheetName.upper())
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetName) + "-View-\d+").match, project.filenames))
-        self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
+        if cfg.threaded:
+            self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(
+                jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
+        else:
+            self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
         self.runSheetCleaner()
         self.cleanSheetFilePath = "{0}/derevitized/{1}_xrefed.dwg".format(os.getcwd(), self.sheetName)
@@ -315,15 +322,13 @@ class View:
         return output
 
     def __init__(self, vn):
-        # self.viewName = vn[:-4]
         self.viewName = vn.replace(".dwg", "")
         self.viewIndx = str(re.compile("\d+-View-(\d+).dwg").search(vn).group(1))
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
-        self.viewCleanerScript = "VIEW_{0}-{1}.scr".format(self.parentSheetIndx, self.viewIndx)
+        self.viewCleanerScript = "{0}.scr".format(self.viewName.upper())
         self.xrefs = [Xref(x[0], x[1]) for x in self.getXfromV()]
         self.VScript()
         self.runViewCleaner()
-
 
 class Xref:
     def __init__(self, name, path):

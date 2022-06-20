@@ -5,3 +5,5 @@ paths = {
 }
 verbose = False
 xrefXplodeToggle = True
+deadline = 120
+threaded = True
