@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 
@@ -29,9 +28,7 @@ def main():
     print(path)
     display_title_bar()
     os.chdir(path)
-    logging.basicConfig(filename='acclog.log', level=logging.DEBUG)
-    logging.debug(path)
-    logging.debug("Chnaging DIR to " + path)
+
     mu.preprocess()
     mu.Project()
 

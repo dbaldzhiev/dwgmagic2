@@ -1,4 +1,3 @@
-import logging
 import os
 import re
 import shlex
@@ -49,7 +48,7 @@ def preprocess():
         copy(path + "/" + fn, path + "/derevitized/" + fn)
         os.remove(path + "/" + fn)
     print("TIDY COMPLETE")
-    logging.debug("TIDY COMPLETE")
+
 
 #The general PROJECT CLASS
 class Project:
@@ -161,16 +160,19 @@ class Project:
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
         command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=self.accpath, path=os.getcwd())
-        print("RUNNING: " + command)
-        logging.debug("RUNNING: {}".format(command))
+        print("RUNNING: {}".format(command))
+
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
+
         while process.poll() is None:
             line = process.stdout.readline()
             if line != "":
                 if line != "\n":
-                    print(line.strip("\n"))
+                    if cfg.vverbose:
+                        print(line.strip("\n"))
         output, err = process.communicate()
-        logging.debug(output)
+        if cfg.vverbose:
+            print(output)
         try:
             os.remove("{0}_MM.bak".format(os.path.basename(os.getcwd())))
 
@@ -223,7 +225,6 @@ class Project:
         self.MMMBAT()
         self.cleanSheetsExistenceChecker()
         self.runPScript()
-        logging.debug("COMPLETE")
         print("DWG MAGIC COMPLETE")
 
 class Sheet:
@@ -267,7 +268,7 @@ class Sheet:
 
         output, err = process.communicate()
         os.remove("{0}/derevitized/{1}".format(os.getcwd(), self.workingFile))
-        if cfg.verbose:
+        if cfg.vverbose:
             print(output.decode("utf-16"))
 
 
@@ -307,8 +308,8 @@ class View:
             print("CLEANING VIEW {view} with SCRIPT {script}".format(view=self.viewName, script=self.viewCleanerScript))
         process = sp.Popen(command, stdout=sp.PIPE)
         output, err = process.communicate()
-        if cfg.verbose:
-            print(output.decode("utf-16"))
+        if cfg.vverbose:
+            output.decode("utf-16")
 
     def getXfromV(self):
         command = "{acc} /s {path}/scripts/CHECKER.scr /i {path}\derevitized\{view}.dwg".format(acc=self.acc,
