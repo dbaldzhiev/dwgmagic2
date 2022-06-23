@@ -151,7 +151,7 @@ class Project:
     def MMMBAT(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
-        scr.write("\"{acc}\" /i \"%cd%/{n}_MXR.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=cfg.paths["acc"],
+        scr.write("\"{acc}\" /i \"%cd%/{n}_MXR.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=self.accpath,
                                                                                            n=os.path.basename(
                                                                                                os.getcwd())))
         scr.write("popd\n")
@@ -160,7 +160,7 @@ class Project:
     #Running the master merge script
     def runPScript(self):
         print("STARTING DWGMAGIC: ")
-        command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=cfg.paths["acc"], path=os.getcwd())
+        command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=self.accpath, path=os.getcwd())
         print("RUNNING: " + command)
         logging.debug("RUNNING: {}".format(command))
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
@@ -193,9 +193,17 @@ class Project:
                 print(Back.RESET)
                 os.system('cls')
 
+    def accoreconsoleversion(self):
+        for key in cfg.accpathv:
+            if os.path.exists(cfg.accpathv[key]):
+                return cfg.accpathv[key]
 
     def __init__(self):
+
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
+        self.accpath = self.accoreconsoleversion()
+        print(self.accpath)
+        # self.accoreconsoleversion()
         # snl = [fname for fname in self.filenames if re.compile("^\d+\.dwg").match(fname) is not None]  # before 220314
         # snl = [fname for fname in self.filenames if re.compile("^((?![-View-]|[-rvt-]).)+(\.dwg)").match(fname) is not None] # before 220620
         snl = [fname for fname in self.filenames if
@@ -242,7 +250,7 @@ class Sheet:
 
     def runSheetCleaner(self):
         command = "{acc} /i \"{path}/derevitized/{sheet}.dwg\" /s \"{path}/scripts/{script}\"".format(
-            acc=cfg.paths["acc"],
+            acc=self.acc,
             path=os.getcwd(),
             sheet=self.sheetName,
             script=self.sheetCleanerScript)
@@ -264,13 +272,14 @@ class Sheet:
 
 
     def __init__(self, sn, project):
+        self.acc = project.accpath
         self.sheetName = sn.replace(".dwg", "")
         self.workingFile = sn
         self.sheetCleanerScript = "{0}_SHEET.scr".format(self.sheetName.upper())
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetName) + "-View-\d+").match, project.filenames))
         if cfg.threaded:
             self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(
-                jb.delayed(View)(v) for v in self.viewNamesOnSheetList)
+                jb.delayed(View)(v, project) for v in self.viewNamesOnSheetList)
         else:
             self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
         self.SScript()
@@ -290,7 +299,7 @@ class View:
 
     def runViewCleaner(self):
         command = "{acc} /i \"{path}/derevitized/{view}.dwg\" /s \"{path}/scripts/{script}\"".format(
-            acc=cfg.paths["acc"],
+            acc=self.acc,
             path=os.getcwd(),
             view=self.viewName,
             script=self.viewCleanerScript)
@@ -302,7 +311,7 @@ class View:
             print(output.decode("utf-16"))
 
     def getXfromV(self):
-        command = "{acc} /s {path}/scripts/CHECKER.scr /i {path}\derevitized\{view}.dwg".format(acc=cfg.paths["acc"],
+        command = "{acc} /s {path}/scripts/CHECKER.scr /i {path}\derevitized\{view}.dwg".format(acc=self.acc,
                                                                                                 path=os.getcwd(),
                                                                                                 view=self.viewName)
 
@@ -321,7 +330,8 @@ class View:
             print("VIEW NAMED: {v} has the following XREFS:{x}".format(v=self.viewName, x=output))
         return output
 
-    def __init__(self, vn):
+    def __init__(self, vn, project):
+        self.acc = project.accpath
         self.viewName = vn.replace(".dwg", "")
         self.viewIndx = str(re.compile("\d+-View-(\d+).dwg").search(vn).group(1))
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
