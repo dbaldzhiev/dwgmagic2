@@ -188,12 +188,13 @@ class Project:
                 print("\n".join(["{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
                 break
             else:
-                print("Time left: {0}".format(timeout - time.time()))
-                print("\n".join([Back.GREEN + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) if e[
-                    1] else Back.RED + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
-                time.sleep(1)
-                print(Back.RESET)
-                os.system('cls')
+                if cfg.verbose:
+                    print("Time left: {0}".format(timeout - time.time()))
+                    print("\n".join([Back.GREEN + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) if e[
+                        1] else Back.RED + "{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
+                    time.sleep(1)
+                    print(Back.RESET)
+                    os.system('cls')
 
     def accoreconsoleversion(self):
         for key in cfg.accpathv:
@@ -278,6 +279,7 @@ class Sheet:
         self.workingFile = sn
         self.sheetCleanerScript = "{0}_SHEET.scr".format(self.sheetName.upper())
         self.viewNamesOnSheetList = list(filter(re.compile(str(self.sheetName) + "-View-\d+").match, project.filenames))
+        print("SHEET {sheetname} ->> {views}".format(sheetname=sn, views=self.viewNamesOnSheetList))
         if cfg.threaded:
             self.viewsOnSheet = jb.Parallel(n_jobs=-1, batch_size=1)(
                 jb.delayed(View)(v, project) for v in self.viewNamesOnSheetList)
