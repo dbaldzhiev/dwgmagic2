@@ -170,9 +170,12 @@ class Project:
 
             if line != "":
                 if line != "\n":
-                    if len(lines) > 5:
-                        sys.stdout.write("\033[5A")
-                        sys.stdout.write("\033[J")
+                    if len(lines) < 5:
+                        code = "\033[{l}A".format(l=len(lines))
+                    else:
+                        code = "\033[5A"
+                    sys.stdout.write(code)
+                    sys.stdout.write("\033[J")
                     lines.append(line.strip("\n"))
                     print(*lines[-5:], sep='\n')
                     if cfg.vverbose:
