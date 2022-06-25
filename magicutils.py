@@ -163,11 +163,16 @@ class Project:
         print("RUNNING: {}".format(command))
 
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
-
+        lines = []
         while process.poll() is None:
             line = process.stdout.readline()
+
             if line != "":
                 if line != "\n":
+                    print("\033[5A")
+                    print("\033[J")
+                    lines.append(line.strip("\n"))
+                    print(*lines[-5:], sep='\n')
                     if cfg.vverbose:
                         print(line.strip("\n"))
         output, err = process.communicate()
@@ -185,7 +190,8 @@ class Project:
         while True:
             existance = list(zip(self.sheets, [os.path.isfile(s.cleanSheetFilePath) for s in self.sheets]))
             if all([ex for sh, ex in existance]) or time.time() > timeout:
-                print("\n".join(["{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
+                if cfg.verbose:
+                    print("\n".join(["{0} is {1}".format(e[0].cleanSheetFilePath, e[1]) for e in existance]))
                 break
             else:
                 if cfg.verbose:
@@ -195,6 +201,7 @@ class Project:
                     time.sleep(1)
                     print(Back.RESET)
                     os.system('cls')
+                pass
 
     def accoreconsoleversion(self):
         for key in cfg.accpathv:
