@@ -211,7 +211,7 @@ class Project:
                 return cfg.accpathv[key]
 
     def __init__(self):
-
+        os.system("")
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
         self.accpath = self.accoreconsoleversion()
         print(self.accpath)
