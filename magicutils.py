@@ -5,6 +5,7 @@ import subprocess as sp
 import sys
 import time
 from shutil import copy
+from threading import Timer
 
 import joblib as jb
 from colorama import Back
@@ -158,26 +159,35 @@ class Project:
 
     #Running the master merge script
     def runPScript(self):
-        print("STARTING DWGMAGIC: ")
+        print("STARTING DWGMERGE: ")
         command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=self.accpath, path=os.getcwd())
         print("RUNNING: {}".format(command))
 
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
         lines = []
-
+        maxl = 10
+        writtenlines = 0
+        aa = []
+        bb = []
         while process.poll() is None:
             line = process.stdout.readline()
 
             if line != "":
                 if line != "\n":
-                    if len(lines) < 5:
-                        code = "\033[{l}A".format(l=len(lines))
-                    else:
-                        code = "\033[5A"
-                    sys.stdout.write(code)
-                    sys.stdout.write("\033[J")
-                    lines.append(line)
-                    print(*lines[-5:])
+                    lines.append(line[:100] + ".." if len(line) > 100 else line.strip("\n"))
+                    if len(lines) > maxl:
+                        if writtenlines != 0:
+                            code = f"\033[{writtenlines}A"
+                            # print(code)
+                            sys.stdout.write(code)
+                            sys.stdout.write("\033[J")
+
+                        ll = lines[-maxl:]
+                        aa.append(ll)
+                        writtenlines = len(lines[-maxl:])
+                        bb.append(writtenlines)
+                        print(*ll, sep="\n")
+                    # print("\n")
                     if cfg.vverbose:
                         print(line.strip("\n"))
         output, err = process.communicate()
@@ -237,7 +247,16 @@ class Project:
         self.MMMScript()
         self.MMMBAT()
         self.cleanSheetsExistenceChecker()
-        self.runPScript()
+
+        timeout = 3
+        t = Timer(timeout, self.runPScript)
+        t.start()
+
+        prompt = "PRESS ENTER TO stop the automerge.\n"
+        answer = input(prompt)
+        if answer is not None:
+            t.cancel()
+
         print("DWG MAGIC COMPLETE")
 
 class Sheet:
