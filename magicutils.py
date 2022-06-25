@@ -198,6 +198,7 @@ class Project:
 
         except Exception as e:
             pass
+        print("DWG MAGIC COMPLETE")
 
     #checkin if all xrefs are done derevitizing and can be passed to master merge
     def cleanSheetsExistenceChecker(self):
@@ -257,7 +258,6 @@ class Project:
         if answer is not None:
             t.cancel()
 
-        print("DWG MAGIC COMPLETE")
 
 class Sheet:
 
