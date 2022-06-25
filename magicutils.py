@@ -176,8 +176,8 @@ class Project:
                         code = "\033[5A"
                     sys.stdout.write(code)
                     sys.stdout.write("\033[J")
-                    lines.append(line.strip("\n"))
-                    print(*lines[-5:], sep='\n')
+                    lines.append(line)
+                    print(*lines[-5:])
                     if cfg.vverbose:
                         print(line.strip("\n"))
         output, err = process.communicate()
