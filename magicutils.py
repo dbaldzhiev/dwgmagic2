@@ -164,13 +164,15 @@ class Project:
 
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
         lines = []
+
         while process.poll() is None:
             line = process.stdout.readline()
 
             if line != "":
                 if line != "\n":
-                    print("\033[5A")
-                    print("\033[J")
+                    if len(lines) > 5:
+                        sys.stdout.write("\033[5A")
+                        sys.stdout.write("\033[J")
                     lines.append(line.strip("\n"))
                     print(*lines[-5:], sep='\n')
                     if cfg.vverbose:
