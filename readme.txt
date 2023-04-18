@@ -3,31 +3,28 @@
 ======DWGMAGIC=======
 =====version 0.3=====
 by Dimitar Baldzhiev
+Overview:
 
+This script is designed to automatically combine sheets exported from Autodesk Revit into a single DWG file. It is intended for situations where the practice requires delivering all sheets of a project in modelspace, despite it being an obsolete workflow. The script takes exported sheets from Revit, arranges them in modelspace, XREFs all the DWGs, binds them, and cleans up the resulting file.
 
-to be written in the future...
-no documentation at this stage :)
+Procedure:
 
-some old jibberish:
+Export sheets from Revit with the "Export views on sheets and links as external references" option enabled, and select the "Automatic-Short" naming convention. The sheets should be numbered 1, 2, 3, 4, etc. and saved to an empty directory.
 
-The following scripts deal with automatically combining sheets exported form Autodesk Revit into single dwg.
+Execute the script with the command "python dwgmagic.py TARGETDIR" where "TARGETDIR" is the path to the directory where the exported sheets are located.
 
-For reasons that are not of importance my practice is required to deliver all the sheets of a project in modelspace. I am aware that it is a very obsolete workflow but this means spending 40 minutes to an hour and a half depending on the size of the project to CHSPACE the paperspace elements in model space, xref all the dwgs, arrange, bind and clean. This is the state of things and please do not explain that using BIM requires to do things differently, I know, it is not up to me.
+The script generates several .SCR files that are automatically executed with accoreconsole.exe, a command-line version of AutoCAD.
 
-Some people may be laughing but I am very serious. So serious that I have made a couple of scripts that automatically combines the files exported from revit into one single dwg.
+The script loads the tectonica.dll, which handles renaming the XREFs, reordering multiviewport sheets, and arranging the sheets neatly. Make sure to set up the tectonica.dll properly.
 
-I am writing this post in hope that other damned souls like me may want to use it and contribute. This is my first time writing c# code for autocad, there are bugs, but so far it works well.
+Once the script is complete, the target folder will contain the following:
 
-Few words about the procedure:
+/derevitized: All the DWG files as modified by the script.
+/originals: Unchanged original exported DWG files.
+/scripts: The .SCR files that were generated and executed by accoreconsole.
+acclog.log: A log file that may or may not contain everything.
+MasterXref.dwg: A DWG file with all the sheets XREFed into it.
+MasterMerged.dwg: A DWG file with all the sheets bound and exploded "smartly".
+Contributions:
 
-• From Revit sheets are exported with “Export views on sheets and links as external references” switched on and Naming: “Automatic-Short”. My sheets are numbered 1,2,3,4,… and the code works for it. If you need support of different naming convention the regex in the python script have to be edited. (Would be happy if somebody suggests more elegant solution). The files have to be exported to an empty directory
-
-• The script is executed with “python dwgmagic.py TARGETDIR”, example “python dwgmagic.py C:\Users\User\Desktop\my_project”
-
-• The script generates several .scr files that are automatically executed with accoreconsole.exe over the exported dwgs
-
-• During the execution tectonica.dll is netloaded – make sure you set it up properly TECTONICA.dll handles renaming the xrefs, reordering multiviewport sheets and arranging the sheets neatly.
-
-• When the script is complete the target folder would contain: /derevitized – all the dwgs as changed by the scripts /originals – unchanged original exported dwgs /scripts – the .scr files that are generated and executed by accoreconsole acclog.log – log that may or may not contain everything MasterXref.dwg – dwg file with all the sheets xref-ed into it MasterMerged.dwg – dwg file with all the sheets bound and exploded “smartly”
-
-I would be happy if anybody shows interest in this and contributes with code.
+This script was written by the original author and may have some bugs. The author welcomes contributions and suggestions for improvement. If you are interested in using the script or contributing code, please express your interest and contribute to the project.
