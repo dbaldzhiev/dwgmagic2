@@ -2,7 +2,6 @@ import os
 import shutil
 import sys
 
-
 def removePrevPP(path):
     if os.path.exists(str(path + "/originals")):
         for e in os.listdir(path):
