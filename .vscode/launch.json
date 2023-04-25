@@ -9,7 +9,7 @@
             "type": "python",
             "request": "launch",
             "program": "main.py",
-            "args": ["/home/dimitar/dwgmagic/testing/testOne"],
+            "args": ["testing/testOne"],
             "console": "integratedTerminal",
             "justMyCode": true
         }

@@ -1,9 +1,7 @@
 
 import os
 import sys
-
 import magicutils as mu
-
 try:
     import debugscripts as deb
 

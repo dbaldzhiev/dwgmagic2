@@ -1,0 +1,79 @@
+INSUNITS 5
+xref
+attach
+"./derevitized/17_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/18_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/19_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/20_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/21_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/22_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/23_xrefed.dwg"
+0,0,0
+
+
+
+xref
+attach
+"./derevitized/24_xrefed.dwg"
+0,0,0
+
+
+
+xref t * r
+netload C:/dwgmagic2/tectonica.dll
+tecarxref
+zoom e
+lwdisplay on
+filedia 0
+saveas
+2007
+"./testOne_MXR.dwg"
+visretain 0
+xbind d *
+xbind s *
+xbind lt *
+tecbxt
+-purge all * n
+audit y
+zoom all
+saveas
+2007
+"./testOne_MM.dwg"
+filedia 1
+qsave

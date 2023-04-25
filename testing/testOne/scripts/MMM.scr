@@ -1,0 +1,14 @@
+netload C:/dwgmagic2/tectonica.dll
+visretain 0
+xbind d *
+xbind s *
+xbind lt *
+tecbxt
+-purge all * n
+audit y
+zoom all
+saveas
+2007
+"./testOne_MMM.dwg"
+filedia 1
+qsave

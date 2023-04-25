@@ -1,0 +1,5 @@
+(command)
+model
+xref t * r
+zoom all
+qsave

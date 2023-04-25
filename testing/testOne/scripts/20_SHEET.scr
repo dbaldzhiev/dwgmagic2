@@ -1,0 +1,14 @@
+netload C:/dwgmagic2/tectonica.dll
+tecrnxref
+tecfixms
+layout set Layout1
+zoom all
+chspace all
+
+
+(command)
+model
+xref t * r
+zoom all
+save ./derevitized/20_xrefed.dwg
+exit
