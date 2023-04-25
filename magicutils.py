@@ -52,7 +52,7 @@ def preprocess():
 #The general PROJECT CLASS
 class Project:
     #The scrtipt that attaches all xrefs and explodes them saves MASTERMERGED.DWG
-    def PScript(self):
+    def generate_Project_Script(self):
         scr = open("./scripts/DWGMAGIC.scr", "w+")
         scr.write("INSUNITS 5\n")
         for sheet in self.sheetNamesList:
@@ -107,7 +107,7 @@ class Project:
         scr.close()
 
     #Making MANUAL master merge script
-    def MMMScript(self):
+    def generate_Manual_Master_Merge_Script(self):
         scr = open("./scripts/MMM.scr", "w+")
         scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
         scr.write("visretain 0\n")
@@ -137,7 +137,6 @@ class Project:
         scr.write("-purge all * n\n")
         scr.write("audit y\n")
         scr.write("zoom all\n")
-        # scr.write("filedia 0\n")
         scr.write("saveas\n")
         scr.write("2007\n")
         scr.write("\"./{0}_MMM.dwg\"\n".format(os.path.basename(os.getcwd())))
@@ -146,7 +145,7 @@ class Project:
         scr.close()
 
     #Making the bat file that uses manual master merge script
-    def MMMBAT(self):
+    def generate_Manual_Master_Merge_bat(self):
         scr = open("./MANUALMERGE.bat", "w+")
         scr.write("pushd %~d1%~p1\n")
         scr.write("\"{acc}\" /i \"%cd%/{n}_MXR.dwg\" /s \"%cd%/scripts/MMM.scr\"\n".format(acc=self.accpath,
@@ -156,11 +155,10 @@ class Project:
         scr.write("pause\n")
 
     #Running the master merge script
-    def runPScript(self):
-        print("STARTING DWGMERGE: ")
+
+    def run_Project_script(self):
         command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=self.accpath, path=os.getcwd())
         print("RUNNING: {}".format(command))
-
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
         lines = []
         maxl = 10
@@ -169,23 +167,19 @@ class Project:
         bb = []
         while process.poll() is None:
             line = process.stdout.readline()
-
             if line != "":
                 if line != "\n":
                     lines.append(line[:100] + ".." if len(line) > 100 else line.strip("\n"))
                     if len(lines) > maxl:
                         if writtenlines != 0:
                             code = f"\033[{writtenlines}A"
-                            # print(code)
                             sys.stdout.write(code)
                             sys.stdout.write("\033[J")
-
                         ll = lines[-maxl:]
                         aa.append(ll)
                         writtenlines = len(lines[-maxl:])
                         bb.append(writtenlines)
                         print(*ll, sep="\n")
-                    # print("\n")
                     if cfg.vverbose:
                         print(line.strip("\n"))
         output, err = process.communicate()
@@ -193,7 +187,6 @@ class Project:
             print(output)
         try:
             os.remove("{0}_MM.bak".format(os.path.basename(os.getcwd())))
-
         except Exception as e:
             pass
         print("DWG MAGIC COMPLETE")
@@ -217,15 +210,15 @@ class Project:
                     os.system('cls')
                 pass
 
-    def accoreconsoleversion(self):
+    def accVersion(self):
         for key in cfg.accpathv:
             if os.path.exists(cfg.accpathv[key]):
                 return cfg.accpathv[key]
 
-    def __init__(self):
+    def __init__(self): 
         os.system("")
         self.filenames = os.listdir("{0}/derevitized/".format(os.getcwd()))
-        self.accpath = self.accoreconsoleversion()
+        self.accpath = self.accVersion()
         print(self.accpath)
         rgx_str = "(?!(?:.*-View-\d*)|(?:.*-rvt-))(^.*)(?:\.dwg$)"
         snl = [fname for fname in self.filenames if re.compile(rgx_str).match(fname) is not None]
@@ -237,13 +230,13 @@ class Project:
                 jb.delayed(Sheet)(s, self) for s in self.sheetNamesList)
         else:
             self.sheets = [Sheet(s, self) for s in self.sheetNamesList]
-        self.PScript()
-        self.MMMScript()
-        self.MMMBAT()
+        self.generate_Project_Script()
+        self.generate_Manual_Master_Merge_Script()
+        self.generate_Manual_Master_Merge_bat()
         self.cleanSheetsExistenceChecker()
 
         timeout = 3
-        t = Timer(timeout, self.runPScript)
+        t = Timer(timeout, self.run_Project_script)
         t.start()
 
         prompt = "PRESS ENTER TO stop the automerge.\n"
@@ -254,7 +247,7 @@ class Project:
 
 class Sheet:
 
-    def SScript(self):
+    def generate_Sheet_script(self):
         scr = open("./scripts/{0}".format(self.sheetCleanerScript), "w+")
         if len(self.viewsOnSheet) > 0:
             scr.write("netload {0}/tectonica.dll\n".format(cfg.paths["dmm"]))
@@ -274,7 +267,7 @@ class Sheet:
         scr.write("exit\n")
         scr.close()
 
-    def runSheetCleaner(self):
+    def run_Sheet_cleaner(self):
         command = "{acc} /i \"{path}/derevitized/{sheet}.dwg\" /s \"{path}/scripts/{script}\"".format(
             acc=self.acc,
             path=os.getcwd(),
@@ -309,13 +302,13 @@ class Sheet:
                 jb.delayed(View)(v, project) for v in self.viewNamesOnSheetList)
         else:
             self.viewsOnSheet = [View(v) for v in self.viewNamesOnSheetList]
-        self.SScript()
-        self.runSheetCleaner()
+        self.generate_Sheet_script()
+        self.run_Sheet_cleaner()
         self.cleanSheetFilePath = "{0}/derevitized/{1}_xrefed.dwg".format(os.getcwd(), self.sheetName)
 
 class View:
 
-    def VScript(self):
+    def generate_View_script(self):
         scr = open("./scripts/{0}".format(self.viewCleanerScript), "w+")
         scr.write("(command)\n")
         scr.write("model\n")
@@ -324,7 +317,7 @@ class View:
         scr.write("qsave\n")
         scr.close()
 
-    def runViewCleaner(self):
+    def run_View_cleaner(self):
         command = "{acc} /i \"{path}/derevitized/{view}.dwg\" /s \"{path}/scripts/{script}\"".format(
             acc=self.acc,
             path=os.getcwd(),
@@ -364,8 +357,8 @@ class View:
         self.parentSheetIndx = str(re.compile("(\d+)-View-\d+.dwg").search(vn).group(1))
         self.viewCleanerScript = "{0}.scr".format(self.viewName.upper())
         self.xrefs = [Xref(x[0], x[1]) for x in self.getXfromV()]
-        self.VScript()
-        self.runViewCleaner()
+        self.generate_View_script()
+        self.run_View_cleaner()
 
 class Xref:
     def __init__(self, name, path):
