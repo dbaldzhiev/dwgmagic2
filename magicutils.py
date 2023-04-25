@@ -19,11 +19,10 @@ def get_dwg_files_in_directory(path):
         sys.exit('THERE ARE NO FILES')
     return output
 
-
 # ordering the folder so it has the folders scripts, originals and derevitized and copying the dwgs in the proper places
 def preprocess():
     path = os.getcwd()
-    fns = getDir(os.getcwd())
+    fns = get_dwg_files_in_directory(os.getcwd())
     if not os.path.exists(str(path + "/scripts")):
         try:
             os.mkdir("scripts")
