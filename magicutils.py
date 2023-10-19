@@ -158,7 +158,9 @@ class Project:
 
     def run_Project_script(self):
         command = "\"{acc}\" /s \"{path}/scripts/DWGMAGIC.scr\"".format(acc=self.accpath, path=os.getcwd())
-        print("RUNNING: {}".format(command))
+        print("======================================")
+        print("+++++ RUNNING: {} ++++++".format(command))
+        print("======================================")
         process = sp.Popen(shlex.split(command), stdout=sp.PIPE, shell=True, encoding='utf-16-le', errors='replace')
         lines = []
         maxl = 10
@@ -234,7 +236,7 @@ class Project:
         self.generate_Manual_Master_Merge_Script()
         self.generate_Manual_Master_Merge_bat()
         self.cleanSheetsExistenceChecker()
-
+        print("======================================")
         timeout = 3
         t = Timer(timeout, self.run_Project_script)
         t.start()

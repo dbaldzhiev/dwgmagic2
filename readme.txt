@@ -1,7 +1,7 @@
 =====TECTONICA=======
 
 ======DWGMAGIC=======
-=====version 0.3=====
+=====version 0.4=====
 by Dimitar Baldzhiev
 Overview:
 
