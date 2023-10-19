@@ -1,8 +1,7 @@
+
 import os
 import sys
-
 import magicutils as mu
-
 try:
     import debugscripts as deb
 
@@ -25,11 +24,20 @@ def display_title_bar():
 
 def main():
     path = sys.argv[1]
+
+    # Print the path to be processed.
     print(path)
+
+    # Display the title bar.
     display_title_bar()
+
+    # Change the current working directory.
     os.chdir(path)
 
+    # Preprocess the file.
     mu.preprocess()
+
+    # Run the project.
     mu.Project()
 
 if __name__ == "__main__":
