@@ -1,0 +1,18 @@
+{% if viewsOnSheet|length > 0 %}
+netload "{{ tectonica_path }}/tectonica.dll"
+tecrnxref
+tecfixms
+{% for view in viewsOnSheet %}
+xref path "{{ view[:-4] }}" "./{{ view }}"
+{% endfor %}
+{% endif %}
+layout set Layout1
+zoom all
+chspace all
+
+
+(command)
+model
+zoom all
+save ./derevitized/{{ sheetName }}_xrefed.dwg
+

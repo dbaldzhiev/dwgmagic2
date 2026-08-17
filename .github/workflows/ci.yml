@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest
+
+      - name: Compile all sources
+        run: python -m compileall dwgmagic main.py
+
+      - name: Run tests
+        run: python -m pytest -v
+
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      # Proves the bundle still builds and starts. Releases are cut locally
+      # (scripts/release.ps1) because tectonica.dll needs the proprietary
+      # ObjectARX SDK, which cannot be installed on a hosted runner — so this
+      # bundle is a smoke test, not a shippable artifact.
+      - name: Build PyInstaller bundle
+        run: python -m PyInstaller dwgmagic2.spec --noconfirm --clean
+
+      - name: Verify the built executable starts
+        run: |
+          .\dist\dwgmagic2\dwgmagic2.exe --version
+          if ($LASTEXITCODE -ne 0) { throw "Frozen executable failed to start" }

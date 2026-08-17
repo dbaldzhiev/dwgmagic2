@@ -1,0 +1,53 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dwgmagic"
+description = "Batch conversion of Revit-exported DWG files into merged AutoCAD deliverables"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Dimitar Baldzhiev" }]
+dynamic = ["version"]
+dependencies = [
+    "Jinja2>=3.1",
+    "rich>=13.0",
+    "packaging>=23.0",
+    "customtkinter>=5.2",
+    "tkinterdnd2>=0.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "pyinstaller>=6.6",
+]
+
+[project.scripts]
+dwgmagic = "dwgmagic.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dbaldzhiev/dwgmagic2"
+Issues = "https://github.com/dbaldzhiev/dwgmagic2/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "dwgmagic.__version__" }
+
+[tool.setuptools.packages.find]
+include = ["dwgmagic*"]
+
+[tool.setuptools.package-data]
+dwgmagic = ["templates/*.tmpl"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501"]

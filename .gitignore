@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.venv-build/
+venv/
+.conda/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.egg-info/
+
+# PyInstaller / packaging output
+/build/
+/dist/
+/installer/Output/
+
+# Compiled AutoCAD plugin (built from tectonica/ by scripts/release.ps1)
+/tectonica.dll
+/tectonica.pdb
+
+# .NET build output
+[Bb]in/
+[Oo]bj/
+.vs/
+
+# Local runtime artifacts
+/logs/
+/sample_data/
+.vscode/

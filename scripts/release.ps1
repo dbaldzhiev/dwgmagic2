@@ -1,0 +1,156 @@
+<#
+.SYNOPSIS
+    Builds and publishes a DWGMAGIC release from this machine.
+.DESCRIPTION
+    Releases are cut locally rather than in CI because tectonica.dll needs the
+    proprietary Autodesk ObjectARX SDK, which cannot be installed on a
+    GitHub-hosted runner. Everything else — tests, the PyInstaller bundle, the
+    Inno Setup installer — happens here too so that one command produces the
+    complete set of assets.
+
+    Produces two release assets:
+      dwgmagic2-setup-vX.Y.Z.exe   the installer end users download
+      dwgmagic2-vX.Y.Z-win64.zip   the bundle the in-app updater swaps in
+
+.PARAMETER SkipTectonica
+    Reuse an existing tectonica.dll instead of rebuilding it. The DLL must
+    already be present at the repository root.
+.PARAMETER SkipTests
+    Skip pytest. Intended for iterating on packaging, not for real releases.
+.PARAMETER NoPublish
+    Build and package, but do not create the GitHub release.
+.PARAMETER Python
+    Interpreter used to create the build environment (default: py -3.12).
+#>
+param(
+    [switch]$SkipTectonica,
+    [switch]$SkipTests,
+    [switch]$NoPublish,
+    [string]$Python = "py -3.12"
+)
+
+$ErrorActionPreference = "Stop"
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+Push-Location $RepoRoot
+
+function Invoke-Step {
+    param([string]$Name, [scriptblock]$Body)
+    Write-Host ""
+    Write-Host "=== $Name" -ForegroundColor Cyan
+    & $Body
+}
+
+try {
+    # --- Version -----------------------------------------------------------
+    $initPath = Join-Path $RepoRoot "dwgmagic\__init__.py"
+    $match = Select-String -Path $initPath -Pattern '__version__\s*=\s*"([^"]+)"'
+    if (-not $match) { throw "Could not read __version__ from $initPath" }
+    $Version = $match.Matches[0].Groups[1].Value
+    $Tag = "v$Version"
+    Write-Host "Releasing DWGMAGIC $Tag" -ForegroundColor Green
+
+    if (-not $NoPublish) {
+        $existing = git tag --list $Tag
+        if ($existing) { throw "Tag $Tag already exists. Bump __version__ in dwgmagic\__init__.py first." }
+        $dirty = git status --porcelain
+        if ($dirty) { throw "Working tree is not clean. Commit or stash before releasing." }
+    }
+
+    # --- Build environment -------------------------------------------------
+    $VenvDir = Join-Path $RepoRoot ".venv-build"
+    $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
+    Invoke-Step "Build environment" {
+        if (-not (Test-Path $VenvPython)) {
+            $exe, $pyArgs = $Python.Split(" ")
+            & $exe @pyArgs -m venv $VenvDir
+            if ($LASTEXITCODE -ne 0) { throw "Failed to create build venv with '$Python'" }
+        }
+        & $VenvPython -m pip install --upgrade pip --quiet
+        & $VenvPython -m pip install -r requirements.txt pyinstaller pytest --quiet
+        if ($LASTEXITCODE -ne 0) { throw "Dependency install failed" }
+    }
+
+    if (-not $SkipTests) {
+        Invoke-Step "Tests" {
+            & $VenvPython -m pytest -q
+            if ($LASTEXITCODE -ne 0) { throw "Tests failed — refusing to release." }
+        }
+    }
+
+    # --- tectonica.dll -----------------------------------------------------
+    $DllPath = Join-Path $RepoRoot "tectonica.dll"
+    if ($SkipTectonica) {
+        if (-not (Test-Path $DllPath)) { throw "-SkipTectonica was passed but $DllPath does not exist." }
+        Write-Host "Reusing existing tectonica.dll"
+    }
+    else {
+        Invoke-Step "tectonica.dll" {
+            & (Join-Path $PSScriptRoot "build_tectonica.ps1")
+        }
+    }
+
+    # --- PyInstaller bundle ------------------------------------------------
+    $DistDir = Join-Path $RepoRoot "dist\dwgmagic2"
+    Invoke-Step "PyInstaller bundle" {
+        & $VenvPython -m PyInstaller dwgmagic2.spec --noconfirm --clean
+        if ($LASTEXITCODE -ne 0) { throw "PyInstaller build failed" }
+    }
+
+    Invoke-Step "Bundle payload" {
+        # APP_ROOT is the executable's directory when frozen, so these two live
+        # beside the exe rather than inside _internal.
+        Copy-Item $DllPath (Join-Path $DistDir "tectonica.dll") -Force
+        Copy-Item (Join-Path $PSScriptRoot "updater.ps1") (Join-Path $DistDir "updater.ps1") -Force
+        Write-Host "tectonica.dll and updater.ps1 placed next to the executables"
+    }
+
+    # --- Installer ---------------------------------------------------------
+    $Iscc = @(
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe",
+        "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+        "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if (-not $Iscc) { throw "Inno Setup 6 not found. Install it: winget install JRSoftware.InnoSetup" }
+
+    Invoke-Step "Installer" {
+        & $Iscc "/DAppVersion=$Version" (Join-Path $RepoRoot "installer\dwgmagic2.iss") | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Inno Setup compile failed" }
+    }
+
+    # --- Update bundle zip -------------------------------------------------
+    $ZipName = "dwgmagic2-$Tag-win64.zip"
+    $ZipPath = Join-Path $RepoRoot "installer\Output\$ZipName"
+    Invoke-Step "Update bundle" {
+        if (Test-Path $ZipPath) { Remove-Item $ZipPath -Force }
+        Compress-Archive -Path (Join-Path $DistDir "*") -DestinationPath $ZipPath
+    }
+
+    $SetupPath = Join-Path $RepoRoot "installer\Output\dwgmagic2-setup-$Tag.exe"
+    if (-not (Test-Path $SetupPath)) { throw "Expected installer at $SetupPath" }
+
+    Write-Host ""
+    Write-Host "Assets:" -ForegroundColor Green
+    Get-Item $SetupPath, $ZipPath | ForEach-Object {
+        Write-Host ("  {0}  ({1:N1} MB)" -f $_.Name, ($_.Length / 1MB))
+    }
+
+    # --- Publish -----------------------------------------------------------
+    if ($NoPublish) {
+        Write-Host ""
+        Write-Host "-NoPublish set; stopping before the GitHub release." -ForegroundColor Yellow
+        return
+    }
+
+    Invoke-Step "GitHub release" {
+        git tag -a $Tag -m "DWGMAGIC $Tag"
+        git push origin $Tag
+        gh release create $Tag $SetupPath $ZipPath --title "DWGMAGIC $Tag" --generate-notes
+        if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+    }
+
+    Write-Host ""
+    Write-Host "Released $Tag" -ForegroundColor Green
+}
+finally {
+    Pop-Location
+}

@@ -1,0 +1,37 @@
+netload "{{ tectonica_path }}/tectonica.dll"
+visretain 0
+xbind d *
+xbind s *
+xbind lt *
+{% if xrefXplodeToggle %}
+tecbxt
+{% else %}
+bindtype 1
+xref bind *
+xplode all
+
+g
+
+(load(findfile "ssx.lsp"))
+{% for sheet in sheets %}
+{% for view in sheet.viewsOnSheet %}
+ssx
+
+block
+{{ sheet.sheetName }}-View-{{ view.viewIndx }}
+
+xplode p
+
+
+{% endfor %}
+{% endfor %}
+{% endif %}
+-purge all * n
+audit y
+zoom all
+saveas
+2004
+"./{{ project_name }}_MMM.dwg"
+filedia 1
+qsave
+
