@@ -2,7 +2,7 @@ INSUNITS 5
 {% for sheet in sheetNamesList %}
 xref
 attach
-"./derevitized/{{ sheet[:-4] }}_xrefed.dwg"
+"{{ project_path }}\derevitized\{{ sheet[:-4] }}_xrefed.dwg"
 0,0,0
 
 
@@ -16,7 +16,7 @@ lwdisplay on
 filedia 0
 saveas
 2007
-"./{{ project_name }}_MXR.dwg"
+"{{ project_path }}\{{ project_name }}_MXR.dwg"
 visretain 0
 xbind d *
 xbind s *
@@ -48,7 +48,7 @@ audit y
 zoom all
 saveas
 2004
-"./{{ project_name }}_MM.dwg"
+"{{ project_path }}\{{ project_name }}_MM.dwg"
 filedia 1
 qsave
 

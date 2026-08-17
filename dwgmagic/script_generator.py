@@ -109,6 +109,10 @@ class ScriptGenerator:
         rendered = template.render(
             tectonica_path=context.settings.tectonica_path.as_posix(),
             project_name=context.project_root.name,
+            # Scripts address their outputs absolutely. Windows cannot give a
+            # process a UNC working directory, so a relative path in a script
+            # silently resolves outside a project that lives on a network share.
+            project_path=str(context.project_root),
             xrefXplodeToggle=context.settings.xref_xplode_toggle,
             **kwargs,
         )

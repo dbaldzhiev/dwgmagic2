@@ -1,4 +1,5 @@
-pushd %~d1%~p1
+rem pushd maps a drive letter for UNC paths, which cmd cannot use as a cwd.
+pushd "%~dp0"
 "{{ acc }}" /i "%cd%/{{ project_name }}_MXR.dwg" /s "%cd%/scripts/MMM.scr"
 popd
 pause

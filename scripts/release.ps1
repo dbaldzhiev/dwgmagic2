@@ -40,6 +40,16 @@ function Invoke-Step {
     & $Body
 }
 
+function Invoke-WithRetry {
+    param([string]$Name, [scriptblock]$Body, [int]$Attempts = 8, [int]$DelaySeconds = 20)
+    for ($i = 1; $i -le $Attempts; $i++) {
+        Write-Host "  $Name (attempt $i/$Attempts)"
+        if (& $Body) { return }
+        if ($i -lt $Attempts) { Start-Sleep -Seconds $DelaySeconds }
+    }
+    throw "$Name failed after $Attempts attempts"
+}
+
 try {
     # --- Version -----------------------------------------------------------
     $initPath = Join-Path $RepoRoot "dwgmagic\__init__.py"
@@ -142,10 +152,28 @@ try {
     }
 
     Invoke-Step "GitHub release" {
-        git tag -a $Tag -m "DWGMAGIC $Tag"
+        if (-not (git tag --list $Tag)) { git tag -a $Tag -m "DWGMAGIC $Tag" }
         git push origin $Tag
-        gh release create $Tag $SetupPath $ZipPath --title "DWGMAGIC $Tag" --generate-notes
-        if ($LASTEXITCODE -ne 0) { throw "gh release create failed" }
+
+        # Creating the release and uploading each asset are retried separately:
+        # a partial failure during a GitHub incident otherwise leaves the tag
+        # pushed with no release, and re-running the whole build to recover.
+        Invoke-WithRetry "create release" {
+            $out = gh release create $Tag --title "DWGMAGIC $Tag" --generate-notes 2>&1
+            if ($LASTEXITCODE -eq 0) { return $true }
+            if ($out -match "already exists") { Write-Host "  release already exists"; return $true }
+            Write-Host "  $($out | Select-Object -Last 1)"
+            return $false
+        }
+
+        foreach ($asset in @($SetupPath, $ZipPath)) {
+            Invoke-WithRetry "upload $(Split-Path -Leaf $asset)" {
+                $out = gh release upload $Tag $asset --clobber 2>&1
+                if ($LASTEXITCODE -eq 0) { return $true }
+                Write-Host "  $($out | Select-Object -Last 1)"
+                return $false
+            }
+        }
     }
 
     Write-Host ""

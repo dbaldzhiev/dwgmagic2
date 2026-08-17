@@ -1248,16 +1248,9 @@ class GuiApplication(_RootWindow):
             )
             return
         if inspection.first_run:
-            proceed = messagebox.askyesno(
-                "Confirm First Run",
-                f"About to process {project_root}\n\n"
-                f"Found: {inspection.describe()}\n\n"
-                "DWGMAGIC will move the DWGs into originals/, create scripts/, "
-                "derevitized/ and logs/ folders, and generate merged outputs "
-                "in this folder. Continue?",
-            )
-            if not proceed:
-                return
+            # Logged rather than confirmed: pressing Run is the confirmation, and
+            # the layout it describes is the documented, expected behaviour.
+            self._append_log(f"First run in {project_root} — {inspection.describe()}")
 
         self._running = True
         self.run_button.configure(state="disabled")
