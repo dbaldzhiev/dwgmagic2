@@ -4,8 +4,8 @@
 .DESCRIPTION
     Releases are cut locally rather than in CI because tectonica.dll needs the
     proprietary Autodesk ObjectARX SDK, which cannot be installed on a
-    GitHub-hosted runner. Everything else — tests, the PyInstaller bundle, the
-    Inno Setup installer — happens here too so that one command produces the
+    GitHub-hosted runner. Everything else (tests, the PyInstaller bundle, the
+    Inno Setup installer) happens here too so that one command produces the
     complete set of assets.
 
     Produces two release assets:
@@ -83,7 +83,7 @@ try {
     if (-not $SkipTests) {
         Invoke-Step "Tests" {
             & $VenvPython -m pytest -q
-            if ($LASTEXITCODE -ne 0) { throw "Tests failed — refusing to release." }
+            if ($LASTEXITCODE -ne 0) { throw "Tests failed - refusing to release." }
         }
     }
 
@@ -107,10 +107,22 @@ try {
     }
 
     Invoke-Step "Bundle payload" {
+        # updater.ps1 is run by Windows PowerShell 5.1, which reads a BOM-less
+        # .ps1 using the system ANSI codepage. A single UTF-8 character in it
+        # arrives mangled and the whole script fails to parse - which silently
+        # breaks in-app updating for everyone already on the previous version.
+        $updaterSrc = Join-Path $PSScriptRoot "updater.ps1"
+        $updaterText = [System.IO.File]::ReadAllText($updaterSrc)
+        $nonAscii = ($updaterText.ToCharArray() | Where-Object { [int]$_ -gt 127 })
+        if ($nonAscii.Count -gt 0) {
+            $shown = ($nonAscii | Select-Object -Unique | ForEach-Object { "'$_'" }) -join ", "
+            throw "updater.ps1 must be pure ASCII; found $($nonAscii.Count) non-ASCII character(s): $shown"
+        }
+
         # APP_ROOT is the executable's directory when frozen, so these two live
         # beside the exe rather than inside _internal.
         Copy-Item $DllPath (Join-Path $DistDir "tectonica.dll") -Force
-        Copy-Item (Join-Path $PSScriptRoot "updater.ps1") (Join-Path $DistDir "updater.ps1") -Force
+        Copy-Item $updaterSrc (Join-Path $DistDir "updater.ps1") -Force
         Write-Host "tectonica.dll and updater.ps1 placed next to the executables"
     }
 

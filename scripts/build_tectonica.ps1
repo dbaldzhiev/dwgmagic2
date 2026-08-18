@@ -2,7 +2,7 @@
 .SYNOPSIS
     Builds tectonica.dll from tectonica\ and copies it to the repository root.
 .DESCRIPTION
-    Requires the Autodesk ObjectARX SDK to be installed locally — tectonica.csproj
+    Requires the Autodesk ObjectARX SDK to be installed locally; tectonica.csproj
     references it by absolute path and it is not redistributable, which is why
     this cannot run on a GitHub-hosted runner and releases are cut locally.
 .PARAMETER Configuration

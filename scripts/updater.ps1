@@ -3,8 +3,13 @@
     Replaces a DWGMAGIC installation with a newer onedir bundle.
 .DESCRIPTION
     Downloads the release bundle zip, extracts it, and mirrors it over the
-    install directory. Nothing is installed and no interpreter is required —
+    install directory. Nothing is installed and no interpreter is required:
     the bundle is already self-contained.
+
+    Keep this file pure ASCII. Windows PowerShell 5.1 reads a .ps1 with no BOM
+    using the system ANSI codepage, so a UTF-8 character here arrives mangled
+    (an em dash becomes a smart quote) and the script fails to parse.
+    scripts/release.ps1 enforces this at build time.
 
     Invoked by dwgmagic.update.launch_updater, which copies this script to TEMP
     first so the updater is not inside the directory it is replacing.
@@ -47,7 +52,7 @@ try {
     }
 
     if (-not (Test-Path (Join-Path $Source "dwgmagic2w.exe"))) {
-        throw "Downloaded bundle does not contain dwgmagic2w.exe — refusing to swap."
+        throw "Downloaded bundle does not contain dwgmagic2w.exe - refusing to swap."
     }
 
     # The mirror below purges files missing from the bundle. Releases normally
