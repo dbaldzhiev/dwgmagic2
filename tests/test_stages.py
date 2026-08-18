@@ -59,7 +59,10 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
     calls = {}
 
     def run_script(script_path, logger, input_path=None, **kwargs):
+        # Read it while the check owns it: the generated script is temporary
+        # and is deleted as soon as the run finishes.
         calls["script_path"] = script_path
+        calls["body"] = Path(script_path).read_text(encoding=settings.script_encoding)
         return AutoCadResult(name="trusted", returncode=0, stdout="", stderr="", command=())
 
     checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script))
@@ -67,10 +70,10 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
     result = stage.run(context)
 
     assert result.succeeded is True
-    generated = calls["script_path"]
-    body = Path(generated).read_text(encoding=settings.script_encoding)
-    assert "netload" in body
-    assert (tectonica / "tectonica.dll").as_posix() in body
+    assert "netload" in calls["body"]
+    assert (tectonica / "tectonica.dll").as_posix() in calls["body"]
+    # The check runs three-plus times per run; it must not leave files behind.
+    assert not Path(calls["script_path"]).exists()
 
 
 def test_trusted_folder_check_fails_without_dll(tmp_path):
@@ -240,6 +243,59 @@ def test_script_generation_stage(tmp_path):
     merge_bat = (tmp_path / "MANUALMERGE.bat").read_text(encoding="cp1251")
     assert merge_bat.startswith("bat ")
     assert "accoreconsole" in merge_bat.lower()
+
+
+def test_log_cleanup_keeps_history_and_the_open_run_log(tmp_path):
+    """Run logs rotate by filename rather than by moving a locked directory.
+
+    The previous implementation renamed ``logs/`` to a timestamped backup, which
+    on Windows always failed because the active run log inside it was already
+    open — so a single ``run.log`` accumulated across every run forever.
+    """
+
+    settings = Settings(project_root=tmp_path, log_dir=Path("logs"))
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    previous = logs / "run_20260101_000000.log"
+    previous.write_text("previous run")
+    (logs / "jobs").mkdir()
+    (logs / "jobs" / "1_SHEET.out.txt").write_text("stale console output")
+
+    factory = LoggerFactory(settings)
+    logger = factory.create("PREPROCESS")
+    logger.info("run starting")
+    active = Path(factory._file_handler.baseFilename)
+
+    try:
+        Preprocessor()._cleanup_logs(logs, logger)
+
+        assert previous.exists(), "earlier run logs must be kept"
+        assert active.exists(), "the log open in this process must survive"
+        assert not (logs / "jobs").exists(), "stale job dumps are regenerated"
+    finally:
+        factory.close()
+
+    assert active.stat().st_size > 0
+
+
+def test_log_cleanup_prunes_the_oldest_run_logs(tmp_path):
+    settings = Settings(project_root=tmp_path, log_dir=Path("logs"))
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    for index in range(30):
+        (logs / f"run_202601{index:02d}_000000.log").write_text("old")
+
+    factory = LoggerFactory(settings)
+    logger = factory.create("PREPROCESS")
+    try:
+        Preprocessor()._cleanup_logs(logs, logger)
+    finally:
+        factory.close()
+
+    remaining = sorted(path.name for path in logs.glob("run_*.log"))
+    assert len(remaining) == Preprocessor._MAX_RUN_LOGS
+    # The newest are the ones kept.
+    assert remaining[-1] == "run_20260129_000000.log"
 
 
 class FakeCoordinator:

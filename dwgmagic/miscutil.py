@@ -259,26 +259,39 @@ class Preprocessor:
             log_dir.mkdir(parents=True, exist_ok=True)
             return
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_dir = log_dir.with_name(f"{log_dir.name}_backup_{timestamp}")
+        # Run logs are named per run (run_<timestamp>.log), so previous runs are
+        # kept rather than clobbered. Only the per-job console dumps are cleared,
+        # since those are regenerated wholesale by the run about to start.
+        # The active run log is open in this process and must be left alone.
         try:
-            log_dir.rename(backup_dir)
-        except OSError as exc:
-            # Expected whenever the active run.log lives inside it already.
-            logger.info("Reusing existing log directory %s", log_dir)
-            logger.debug("Log directory rename skipped: %s", exc)
             for entry in log_dir.iterdir():
                 if entry.is_dir():
                     shutil.rmtree(entry, ignore_errors=True)
-                else:
+                elif entry.suffix.lower() != ".log":
                     try:
                         entry.unlink()
                     except PermissionError as remove_exc:
                         logger.debug("Skipping locked log file %s: %s", entry, remove_exc)
                     except OSError as remove_exc:
                         logger.warning("Unable to remove %s: %s", entry, remove_exc)
+            self._prune_old_run_logs(log_dir, logger)
         finally:
             log_dir.mkdir(parents=True, exist_ok=True)
+
+    #: Run logs kept per project before the oldest are discarded.
+    _MAX_RUN_LOGS = 20
+
+    def _prune_old_run_logs(self, log_dir: Path, logger) -> None:
+        """Keep the most recent run logs so the folder cannot grow forever."""
+
+        logs = sorted(
+            log_dir.glob("run_*.log"), key=lambda path: path.name, reverse=True
+        )
+        for stale in logs[self._MAX_RUN_LOGS:]:
+            try:
+                stale.unlink()
+            except OSError as exc:  # pragma: no cover - locked by a viewer
+                logger.debug("Could not remove old run log %s: %s", stale, exc)
 
 
 __all__ = ["Preprocessor", "ProjectInspection", "inspect_project"]

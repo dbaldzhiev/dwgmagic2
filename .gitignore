@@ -28,3 +28,6 @@ venv/
 /logs/
 /sample_data/
 .vscode/
+
+# Working plans and design docs for agent sessions (local, not shared)
+/plans/

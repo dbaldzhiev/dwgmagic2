@@ -7,8 +7,8 @@ The pipeline (trusted-folder validation → preprocessing → script generation 
 - **Pipeline orchestration** — discrete stages with shared context, per-stage timing, and structured results.
 - **Resilient AutoCAD execution** — bounded parallelism, per-job timeouts, live console output streaming, cancellation, and failure detection that catches jobs which "succeed" with a zero exit code but fail in their output.
 - **Output validation** — sheet batches must actually produce their `*_xrefed.dwg` files before the merge is attempted; the final deliverables (`<project>_MXR.dwg`, `<project>_MM.dwg`) are verified and reported with sizes.
-- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects, and the GUI asks for confirmation before the first run in a folder.
-- **Run tracking** — every run writes a chronological `logs/run.log`, per-job console dumps under `logs/jobs/`, and a machine-readable manifest `logs/run_<timestamp>.json`.
+- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects.
+- **Run tracking** — every run writes a chronological `logs/run_<timestamp>.log`, per-job console dumps under `logs/jobs/`, and a machine-readable manifest `logs/run_<timestamp>.json`.
 - **Auto-update** — the GUI checks GitHub releases on startup and can replace itself in place.
 
 ## Installation
@@ -66,7 +66,7 @@ Common flags (both front-ends):
 - `--version` — print the application version.
 
 ## Configuration
-Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py). Precedence: CLI flags > config file (`--config`, TOML/YAML) > environment variables > defaults.
+Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py). Precedence: CLI flags > environment variables > config file (`--config`, TOML/YAML) > defaults.
 
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |
@@ -145,7 +145,7 @@ Use `-NoPublish` to build the assets without tagging or publishing, and `-SkipTe
 
 ## Troubleshooting a failed run
 Inside the project folder:
-- `logs/run.log` — chronological log of the whole run, all components.
+- `logs/run_<timestamp>.log` — chronological log of one run, all components. Previous runs are kept (most recent 20).
 - `logs/jobs/<script>.out.txt` — raw AutoCAD console output per job.
 - `logs/run_<timestamp>.json` — the run manifest: settings snapshot, stage timings, per-job exit codes/durations/failure reasons, deliverable status.
 
@@ -157,5 +157,5 @@ GitHub Actions runs the test suite and a full PyInstaller build on every push/PR
 ## Contributing & Support
 Issues and pull requests are welcome. When reporting bugs, include:
 - The command you ran (CLI arguments or GUI launch instructions).
-- The run manifest and relevant snippets from `logs/run.log`, or `crash.log` for startup failures.
+- The run manifest and relevant snippets from the newest `logs/run_<timestamp>.log`, or `crash.log` for startup failures.
 - AutoCAD job output from `logs/jobs/`, if applicable.

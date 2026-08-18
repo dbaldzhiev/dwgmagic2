@@ -160,6 +160,9 @@ class GuiApplication(_RootWindow):
         self.context: ProjectContext | None = None
         self._running = False
         self._cancel_event: threading.Event | None = None
+        self._pipeline_thread: threading.Thread | None = None
+        self._shutting_down = False
+        self._shutdown_deadline: float | None = None
         self._autorun_pending = autorun and initial_project is not None
         self._update_info = None
         self._run_started: float | None = None
@@ -173,10 +176,10 @@ class GuiApplication(_RootWindow):
         self._apply_tree_style()
         self._reset_stage_table()
         self._reset_task_tree()
+        self._update_check_enabled = enable_update_check
         self.after(100, self._process_events)
         self.after(500, self._run_startup_checks)
-        if enable_update_check:
-            self.after(1500, self._run_update_check)
+        self.after(1500, self._run_update_check)
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
@@ -569,16 +572,56 @@ class GuiApplication(_RootWindow):
         self.after(50, self._apply_tree_style)
 
     # Persistence ----------------------------------------------------------
+    #: How long to wait for AutoCAD jobs to die before closing anyway.
+    _SHUTDOWN_GRACE_SECONDS = 30.0
+
     def _on_close(self) -> None:
-        if self._running:
+        if self._running and not self._shutting_down:
             proceed = messagebox.askyesno(
                 "Pipeline Running",
                 "A pipeline run is still in progress. Cancel it and exit?",
             )
             if not proceed:
                 return
-            if self._cancel_event is not None:
-                self._cancel_event.set()
+            self._begin_shutdown()
+            return
+        self._save_state_and_destroy()
+
+    def _begin_shutdown(self) -> None:
+        """Cancel the run and wait for AutoCAD to exit before destroying.
+
+        The pipeline thread is a daemon, so destroying the window immediately
+        kills it before the runner can reap its children — leaving orphaned
+        accoreconsole processes holding locks on the project's DWG files.
+        """
+
+        self._shutting_down = True
+        if self._cancel_event is not None:
+            self._cancel_event.set()
+        self._set_status("Stopping AutoCAD jobs…", kind="warning")
+        self.cancel_button.configure(state="disabled", text="Stopping…")
+        self.run_button.configure(state="disabled")
+        self._shutdown_deadline = time.monotonic() + self._SHUTDOWN_GRACE_SECONDS
+        self._await_shutdown()
+
+    def _await_shutdown(self) -> None:
+        """Poll for the pipeline thread to finish; never block the main loop."""
+
+        thread = self._pipeline_thread
+        finished = thread is None or not thread.is_alive()
+        expired = time.monotonic() >= (self._shutdown_deadline or 0.0)
+        if finished or expired:
+            if expired and not finished:
+                self._append_log(
+                    "AutoCAD jobs did not stop within "
+                    f"{self._SHUTDOWN_GRACE_SECONDS:.0f}s; closing anyway.",
+                    level="warning",
+                )
+            self._save_state_and_destroy()
+            return
+        self.after(200, self._await_shutdown)
+
+    def _save_state_and_destroy(self) -> None:
         try:
             self.gui_state.geometry = self.geometry()
             self.gui_state.save()
@@ -800,7 +843,18 @@ class GuiApplication(_RootWindow):
         threading.Thread(target=_check, daemon=True).start()
 
     # Updates ----------------------------------------------------------------
+    def _update_checks_enabled(self) -> bool:
+        """CLI flag / env gate, plus the loaded project's ``check_updates``."""
+
+        if not self._update_check_enabled:
+            return False
+        settings = self.current_settings
+        return True if settings is None else bool(settings.check_updates)
+
     def _run_update_check(self) -> None:
+        if not self._update_checks_enabled():
+            return
+
         def _check() -> None:
             info = check_for_update()
             if info is not None:
@@ -1277,8 +1331,10 @@ class GuiApplication(_RootWindow):
 
         self.tabview.set("Tasks")
 
-        thread = threading.Thread(target=self._run_pipeline_thread, daemon=True)
-        thread.start()
+        self._pipeline_thread = threading.Thread(
+            target=self._run_pipeline_thread, daemon=True
+        )
+        self._pipeline_thread.start()
 
     def _cancel_pipeline(self) -> None:
         if not self._running or self._cancel_event is None:
@@ -1307,14 +1363,40 @@ class GuiApplication(_RootWindow):
             self.event_queue.put(ProgressEvent("pipeline_thread_complete", {}))
 
     # Event handling ------------------------------------------------------
+    #: Events drained per tick. A burst from N parallel consoles must not hold
+    #: the main loop for the length of the burst.
+    _MAX_EVENTS_PER_TICK = 200
+
     def _process_events(self) -> None:
+        """Drain queued events.
+
+        Rearming happens in ``finally``: a handler that raises must never be
+        able to stop the pump, or the window stays alive and responsive while
+        silently never updating again.
+        """
+
         try:
-            while True:
-                event = self.event_queue.get_nowait()
-                self._handle_event(event)
-        except queue.Empty:
+            for _ in range(self._MAX_EVENTS_PER_TICK):
+                try:
+                    event = self.event_queue.get_nowait()
+                except queue.Empty:
+                    break
+                try:
+                    self._handle_event(event)
+                except Exception as exc:  # noqa: BLE001 - one bad event, not the pump
+                    self._report_event_error(event, exc)
+        finally:
+            self.after(100, self._process_events)
+
+    def _report_event_error(self, event: ProgressEvent, exc: Exception) -> None:
+        """Surface a handler failure instead of losing it."""
+
+        try:
+            self._append_log(
+                f"Internal error handling {event.kind!r} event: {exc!r}", level="error"
+            )
+        except Exception:  # noqa: BLE001 - the log widget itself may be the failure
             pass
-        self.after(100, self._process_events)
 
     def _update_progress(self) -> None:
         total_stages = len(self.stage_names)

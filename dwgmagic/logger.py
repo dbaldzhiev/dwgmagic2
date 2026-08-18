@@ -2,13 +2,14 @@
 
 Loggers are scoped to a single run (factory instance) so that loading a new
 project in the GUI cannot leak file handlers pointing at the previous
-project's log directory. All components share one chronological ``run.log``;
+project's log directory. All components share one chronological ``run_<timestamp>.log``;
 raw AutoCAD console output is dumped separately under ``logs/jobs/``.
 """
 from __future__ import annotations
 
 import itertools
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -34,10 +35,12 @@ class LoggerFactory:
         extra_handlers: Tuple[logging.Handler, ...] = (),
         *,
         _scope: Optional[str] = None,
+        _started: Optional[datetime] = None,
     ) -> None:
         self.settings = settings
         self.extra_handlers = tuple(extra_handlers)
         self._scope = _scope or f"dwgmagic.run{next(_factory_counter)}"
+        self._started = _started or datetime.now()
         self._file_handler: Optional[logging.Handler] = None
         self._loggers: List[logging.Logger] = []
 
@@ -48,7 +51,9 @@ class LoggerFactory:
         for handler in handlers:
             if handler not in existing:
                 existing.append(handler)
-        return LoggerFactory(self.settings, tuple(existing), _scope=self._scope)
+        return LoggerFactory(
+            self.settings, tuple(existing), _scope=self._scope, _started=self._started
+        )
 
     def _log_directory(self) -> Path:
         log_dir = self.settings.project_root / self.settings.log_dir
@@ -57,7 +62,10 @@ class LoggerFactory:
 
     def _shared_file_handler(self) -> logging.Handler:
         if self._file_handler is None:
-            log_path = self._log_directory() / "run.log"
+            # One log per run, named like the manifests. Rotating by filename
+            # avoids the unwinnable fight of trying to move or truncate a file
+            # this process already holds open on Windows.
+            log_path = self._log_directory() / f"run_{self._started:%Y%m%d_%H%M%S}.log"
             handler = logging.FileHandler(
                 log_path, encoding=self.settings.log_encoding, delay=True
             )

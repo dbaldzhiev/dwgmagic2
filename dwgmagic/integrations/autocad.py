@@ -33,6 +33,32 @@ FAILURE_MARKERS: Tuple[str, ...] = (
 _POLL_INTERVAL = 0.25
 
 
+def terminate_process_tree(process: subprocess.Popen) -> None:
+    """Kill ``process`` and everything it spawned.
+
+    ``accoreconsole`` starts child processes of its own; killing only the
+    top-level handle leaves them running, holding locks on the project's DWG
+    files. ``taskkill /T`` is used because it is the only way to reach the
+    whole tree without a third-party dependency.
+    """
+
+    if process.poll() is not None:
+        return
+    try:
+        subprocess.run(  # noqa: S603 - fixed argv, pid is our own child
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass  # fall through to the direct kill below
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
 def registry_autocad_candidates() -> Tuple[Path, ...]:
     """Discover accoreconsole.exe locations from the AutoCAD registry keys."""
 
@@ -154,11 +180,24 @@ class AutoCadRunner:
     def __init__(self, settings: Settings, *, timeout: Optional[float] = None) -> None:
         self.settings = settings
         self.timeout = timeout if timeout is not None else settings.job_timeout
+        self._executable: Optional[Path] = None
+        self._discover_lock = threading.Lock()
 
     def discover(self) -> Path:
-        return discover_autocad(
-            self.settings.autocad_executable, self.settings.autocad_candidates
-        )
+        """Locate accoreconsole.exe once per runner.
+
+        Called at the top of every job from every worker thread; without
+        memoisation this re-walks the AutoCAD registry keys hundreds of times
+        per run.
+        """
+
+        if self._executable is None:
+            with self._discover_lock:
+                if self._executable is None:
+                    self._executable = discover_autocad(
+                        self.settings.autocad_executable, self.settings.autocad_candidates
+                    )
+        return self._executable
 
     def run_script(
         self,
@@ -223,7 +262,7 @@ class AutoCadRunner:
             if cancel_event is not None and cancel_event.is_set():
                 failure_reason = "cancelled"
                 logger.warning("Cancelling AutoCAD job %s", script_path.stem)
-                process.kill()
+                terminate_process_tree(process)
                 process.wait()
                 break
             if deadline is not None and time.monotonic() > deadline:
@@ -233,7 +272,7 @@ class AutoCadRunner:
                     script_path.stem,
                     self.timeout,
                 )
-                process.kill()
+                terminate_process_tree(process)
                 process.wait()
                 break
             time.sleep(_POLL_INTERVAL)
