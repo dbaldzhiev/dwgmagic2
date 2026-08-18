@@ -45,11 +45,19 @@ A startup failure writes a full traceback to `%LOCALAPPDATA%\dwgmagic2\logs\cras
 ```
 dwgmagic2w.exe [project_directory]
 ```
-- Open a project via the button, the recent-projects list, or by dropping a folder onto the window.
-- Preflight checks for AutoCAD, the `tectonica.dll` plugin, and the trusted-path configuration (with a one-click fix).
-- Stage table with per-stage timing; task tree with per-job status, exit codes, durations, and **live AutoCAD console output**.
-- **Cancel Run** stops scheduling new jobs and kills running AutoCAD consoles.
-- Light/Dark/System appearance; window size, appearance, and recent projects persist between sessions.
+The window is organised around the run lifecycle:
+
+- **Project bar** — project identity, what the folder holds (`6 DWG · 3 sheets · 3 views`, with warning chips for ignored or orphan files), and a health pill that expands into the AutoCAD / plugin / trusted-path detail with a one-click fix.
+- **Run panel** — before the run, exactly what will be created and **what will be deleted**; during it, the current phase, elapsed time, an ETA, and Cancel.
+- **Work view** — one tree of stages → batches → jobs with live AutoCAD console output per job, `All / Running / Failed` filters, and **Open job log** on failures.
+- **Result panel** — deliverables you can open or reveal in Explorer, failures that click through to their output, and Open logs folder / Open manifest / Copy report.
+- **Logs tab** — level filter, search, and autoscroll.
+
+Open a project via the button, the Recent menu, or by dropping a folder onto the window. Keyboard: **Ctrl+O** open, **F5** run, **Esc** cancel. **Cancel** stops scheduling new jobs and kills running AutoCAD process trees; closing mid-run waits for them to exit rather than orphaning them.
+
+Light/Dark/System appearance; window size, appearance, parallel-job count, and recent projects persist between sessions.
+
+**Projects on network shares are supported.** AutoCAD refuses to load a script file from a network location, so generated `.scr` files are staged to a local temp folder and executed from there; the project keeps its own readable copy in `scripts/` and the DWGs stay where they are.
 
 `--autorun` starts the pipeline automatically once the project loads (used by the context-menu integration).
 
@@ -132,7 +140,7 @@ Use `-NoPublish` to build the assets without tagging or publishing, and `-SkipTe
 ## Project Structure
 - `dwgmagic/core/` — pipeline primitives and stage implementations.
 - `dwgmagic/integrations/` — AutoCAD runner/coordinator (subprocess management, discovery).
-- `dwgmagic/gui/` — CustomTkinter application and persisted UI state.
+- `dwgmagic/gui/` — the window and event wiring (`app.py`), colour tokens (`theme.py`), persisted UI state, and one module per zone under `gui/views/`.
 - `dwgmagic/ui/` — shared progress listeners for CLI and GUI.
 - `dwgmagic/templates/` — packaged Jinja templates for AutoCAD script generation.
 - `dwgmagic/classify.py` — the single source of truth for the sheet/view file-naming convention.
