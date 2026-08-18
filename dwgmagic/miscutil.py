@@ -89,6 +89,72 @@ def inspect_project(root: Path) -> ProjectInspection:
     return ProjectInspection(root=root, mode="invalid")
 
 
+@dataclass(slots=True)
+class RunPlan:
+    """What a run would create and destroy, computed without touching disk.
+
+    Pressing Run is destructive — on a rerun it removes everything in the
+    project root that is not ``originals/``, ``original.zip`` or a config file.
+    This makes that consequence showable *before* the click.
+    """
+
+    root: Path
+    mode: str
+    dwg_count: int
+    #: Paths this run would delete, most significant first.
+    deletes: List[Path] = field(default_factory=list)
+    #: Paths this run is expected to produce.
+    produces: List[Path] = field(default_factory=list)
+
+    @property
+    def is_destructive(self) -> bool:
+        return bool(self.deletes)
+
+
+def plan_run(root: Path) -> RunPlan:
+    """Describe the effect of running the pipeline on ``root``."""
+
+    inspection = inspect_project(root)
+    plan = RunPlan(
+        root=root, mode=inspection.mode, dwg_count=len(inspection.dwg_names)
+    )
+    if not inspection.is_project:
+        return plan
+
+    if inspection.mode in {"rerun", "archive"}:
+        # Both paths wipe the root down to the preserved set.
+        keep_archive = inspection.mode == "archive"
+        for entry in sorted(root.iterdir(), key=lambda item: item.name.lower()):
+            if keep_archive and entry.name == "original.zip":
+                continue
+            if not keep_archive and _is_preserved(entry):
+                continue
+            if keep_archive and entry.is_file() and entry.suffix.lower() in PRESERVED_SUFFIXES:
+                continue
+            plan.deletes.append(entry)
+    else:
+        # A fresh run only clears the generated directories.
+        for name in ("scripts", "derevitized", "logs"):
+            target = root / name
+            if target.exists():
+                plan.deletes.append(target)
+
+    name = root.name
+    produced = [
+        root / "originals",
+        root / "derevitized",
+        root / "scripts",
+        root / "logs",
+        root / "MANUALMERGE.bat",
+        root / f"{name}_MXR.dwg",
+        root / f"{name}_MM.dwg",
+    ]
+    if inspection.mode == "fresh":
+        produced.insert(0, root / "original.zip")
+    plan.produces = produced
+    return plan
+
+
 def _is_preserved(entry: Path) -> bool:
     if entry.name in PRESERVED_NAMES:
         return True
@@ -294,4 +360,4 @@ class Preprocessor:
                 logger.debug("Could not remove old run log %s: %s", stale, exc)
 
 
-__all__ = ["Preprocessor", "ProjectInspection", "inspect_project"]
+__all__ = ["Preprocessor", "ProjectInspection", "RunPlan", "inspect_project", "plan_run"]
