@@ -59,7 +59,10 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
     calls = {}
 
     def run_script(script_path, logger, input_path=None, **kwargs):
+        # Read it while the check owns it: the generated script is temporary
+        # and is deleted as soon as the run finishes.
         calls["script_path"] = script_path
+        calls["body"] = Path(script_path).read_text(encoding=settings.script_encoding)
         return AutoCadResult(name="trusted", returncode=0, stdout="", stderr="", command=())
 
     checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script))
@@ -67,10 +70,10 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
     result = stage.run(context)
 
     assert result.succeeded is True
-    generated = calls["script_path"]
-    body = Path(generated).read_text(encoding=settings.script_encoding)
-    assert "netload" in body
-    assert (tectonica / "tectonica.dll").as_posix() in body
+    assert "netload" in calls["body"]
+    assert (tectonica / "tectonica.dll").as_posix() in calls["body"]
+    # The check runs three-plus times per run; it must not leave files behind.
+    assert not Path(calls["script_path"]).exists()
 
 
 def test_trusted_folder_check_fails_without_dll(tmp_path):
@@ -242,6 +245,59 @@ def test_script_generation_stage(tmp_path):
     assert "accoreconsole" in merge_bat.lower()
 
 
+def test_log_cleanup_keeps_history_and_the_open_run_log(tmp_path):
+    """Run logs rotate by filename rather than by moving a locked directory.
+
+    The previous implementation renamed ``logs/`` to a timestamped backup, which
+    on Windows always failed because the active run log inside it was already
+    open — so a single ``run.log`` accumulated across every run forever.
+    """
+
+    settings = Settings(project_root=tmp_path, log_dir=Path("logs"))
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    previous = logs / "run_20260101_000000.log"
+    previous.write_text("previous run")
+    (logs / "jobs").mkdir()
+    (logs / "jobs" / "1_SHEET.out.txt").write_text("stale console output")
+
+    factory = LoggerFactory(settings)
+    logger = factory.create("PREPROCESS")
+    logger.info("run starting")
+    active = Path(factory._file_handler.baseFilename)
+
+    try:
+        Preprocessor()._cleanup_logs(logs, logger)
+
+        assert previous.exists(), "earlier run logs must be kept"
+        assert active.exists(), "the log open in this process must survive"
+        assert not (logs / "jobs").exists(), "stale job dumps are regenerated"
+    finally:
+        factory.close()
+
+    assert active.stat().st_size > 0
+
+
+def test_log_cleanup_prunes_the_oldest_run_logs(tmp_path):
+    settings = Settings(project_root=tmp_path, log_dir=Path("logs"))
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    for index in range(30):
+        (logs / f"run_202601{index:02d}_000000.log").write_text("old")
+
+    factory = LoggerFactory(settings)
+    logger = factory.create("PREPROCESS")
+    try:
+        Preprocessor()._cleanup_logs(logs, logger)
+    finally:
+        factory.close()
+
+    remaining = sorted(path.name for path in logs.glob("run_*.log"))
+    assert len(remaining) == Preprocessor._MAX_RUN_LOGS
+    # The newest are the ones kept.
+    assert remaining[-1] == "run_20260129_000000.log"
+
+
 class FakeCoordinator:
     """Coordinator double that optionally fails selected jobs."""
 
@@ -300,6 +356,98 @@ def test_autocad_stage_builds_jobs(tmp_path):
     assert sheet_job.expected_outputs == (
         tmp_path / "derevitized" / "SheetA_xrefed.dwg",
     )
+
+
+def test_scripts_are_staged_locally_for_execution(tmp_path):
+    """AutoCAD will not load a script from a network location.
+
+    It reports "File load canceled" and exits 0 having done nothing, so every
+    job looks like it succeeded. The project keeps its readable copy; the jobs
+    point at a local staging directory.
+    """
+
+    from dwgmagic.script_generator import execution_scripts_dir
+
+    context, settings = make_context(tmp_path)
+    context.set("dwg_files", ["SheetA.dwg", "SheetA-View-1.dwg"])
+    env = Environment(
+        loader=DictLoader(
+            {
+                "templates/project_script_template.tmpl": "merge",
+                "templates/mmm_script_template.tmpl": "mmm",
+                "templates/manual_merge_bat_template.tmpl": "bat {{ acc }}",
+                "templates/view_script_template.tmpl": "view",
+                "templates/sheet_script_template.tmpl": "sheet",
+            }
+        ),
+    )
+    context.environment = env
+    ScriptGenerationStage(ScriptGenerator(env), LoggerFactory(settings)).run(context)
+
+    staged = execution_scripts_dir(tmp_path)
+    assert (staged / "SHEETA_SHEET.scr").exists(), "jobs run from the local copy"
+    assert (tmp_path / "scripts" / "SHEETA_SHEET.scr").exists(), "project keeps a copy"
+    # The .bat is not a script AutoCAD loads, so it is not staged.
+    assert not (staged / "MANUALMERGE.bat").exists()
+
+    stage = AutoCadStage(FakeCoordinator(), LoggerFactory(settings))
+    jobs = stage._build_jobs(context)
+    for job in jobs.view_jobs + jobs.sheet_jobs + jobs.merge_jobs:
+        assert job.script_path.parent == staged, job.script_path
+        # Inputs stay where the project is.
+    assert jobs.sheet_jobs[0].input_path.is_relative_to(tmp_path)
+
+
+def test_execution_dir_is_local_and_stable_per_project():
+    from dwgmagic.script_generator import execution_scripts_dir
+
+    remote = Path(r"\\SERVER\share\KACHAKOVI\260817_testmerge")
+    staged = execution_scripts_dir(remote)
+
+    assert not str(staged).startswith("\\\\"), "must not be a UNC path"
+    assert execution_scripts_dir(remote) == staged, "stable across calls"
+    # Two projects with the same leaf name must not collide.
+    other = execution_scripts_dir(Path(r"C:\elsewhere\260817_testmerge"))
+    assert other != staged
+
+
+def test_autocad_stage_publishes_the_whole_plan_before_running(tmp_path):
+    """The job total must be known up front, or progress runs backwards.
+
+    Jobs used to be counted as each batch was queued, so the denominator grew
+    mid-run: after the view batch the bar showed ~75%, then the sheet batch
+    queued and it dropped to ~67%.
+    """
+
+    context, settings = make_context(tmp_path)
+    _prepare_autocad_project(tmp_path, context)
+
+    planned = []
+    queue_order = []
+
+    class PlanRecordingCoordinator(FakeCoordinator):
+        def execute(self, jobs, logger, listener=None, cancel_event=None):
+            for job in jobs:
+                queue_order.append(job.name)
+            return super().execute(jobs, logger, listener=listener, cancel_event=cancel_event)
+
+    listener = SimpleNamespace(
+        on_jobs_planned=lambda batches: planned.append(batches),
+        on_job_queued=lambda job: None,
+    )
+    context.set("autocad_listener", listener)
+
+    stage = AutoCadStage(PlanRecordingCoordinator(), LoggerFactory(settings))
+    assert stage.run(context).succeeded is True
+
+    assert len(planned) == 1, "the plan is published exactly once"
+    batches = planned[0]
+    assert [batch.label for batch in batches] == ["views", "sheets", "merge"]
+
+    total = sum(len(batch.job_names) for batch in batches)
+    assert total == len(queue_order), "planned total must match what actually ran"
+    # And it is known before the first job is dispatched.
+    assert total == 3
 
 
 def test_autocad_stage_fails_when_job_fails(tmp_path):

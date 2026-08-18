@@ -14,6 +14,18 @@ from dwgmagic.integrations.autocad import (
 from dwgmagic.settings import Settings
 
 
+@pytest.fixture
+def recorded_taskkill(monkeypatch):
+    """Capture taskkill invocations instead of signalling a real PID."""
+
+    calls = []
+    monkeypatch.setattr(
+        "dwgmagic.integrations.autocad.subprocess.run",
+        lambda command, **kwargs: calls.append(list(command)),
+    )
+    return calls
+
+
 def _quiet_logger():
     return SimpleNamespace(
         debug=lambda *args, **kwargs: None,
@@ -42,6 +54,7 @@ class FakePopen:
         FakePopen.last_instance = self
         self.command = command
         self.cwd = cwd
+        self.pid = 424242
         self.stdout = io.StringIO(getattr(FakePopen, "stdout_body", "console line\n"))
         self.stderr = io.StringIO(getattr(FakePopen, "stderr_body", ""))
         self.returncode = getattr(FakePopen, "exit_code", 0)
@@ -172,7 +185,18 @@ def test_runner_streams_output_to_callback(tmp_path, monkeypatch):
     assert seen == ["first", "second"]
 
 
-def test_runner_kills_job_on_timeout(tmp_path, monkeypatch):
+def _assert_killed_whole_tree(calls, process):
+    """accoreconsole spawns children; killing only the handle orphans them."""
+
+    assert calls, "expected a taskkill invocation"
+    command = calls[-1]
+    assert command[0] == "taskkill"
+    assert "/T" in command, f"must kill the process tree, got {command}"
+    assert str(process.pid) in command
+    assert process.killed is True
+
+
+def test_runner_kills_job_on_timeout(tmp_path, monkeypatch, recorded_taskkill):
     executable = tmp_path / "accoreconsole.exe"
     executable.write_text("stub")
     settings = Settings(project_root=tmp_path, autocad_executable=executable)
@@ -186,10 +210,10 @@ def test_runner_kills_job_on_timeout(tmp_path, monkeypatch):
 
     assert result.succeeded is False
     assert "timed out" in (result.failure_reason or "")
-    assert FakePopen.last_instance.killed is True
+    _assert_killed_whole_tree(recorded_taskkill, FakePopen.last_instance)
 
 
-def test_runner_kills_job_on_cancel(tmp_path, monkeypatch):
+def test_runner_kills_job_on_cancel(tmp_path, monkeypatch, recorded_taskkill):
     executable = tmp_path / "accoreconsole.exe"
     executable.write_text("stub")
     settings = Settings(project_root=tmp_path, autocad_executable=executable)
@@ -207,6 +231,30 @@ def test_runner_kills_job_on_cancel(tmp_path, monkeypatch):
 
     assert result.succeeded is False
     assert result.failure_reason == "cancelled"
+    _assert_killed_whole_tree(recorded_taskkill, FakePopen.last_instance)
+
+
+def test_runner_discovers_executable_once(tmp_path, monkeypatch):
+    """discover() runs per job, per worker thread — it must not re-walk."""
+
+    executable = tmp_path / "accoreconsole.exe"
+    executable.write_text("stub")
+    settings = Settings(project_root=tmp_path)
+    runner = AutoCadRunner(settings)
+
+    walks = []
+
+    def _candidates():
+        walks.append(1)
+        return (executable,)
+
+    monkeypatch.setattr(
+        "dwgmagic.integrations.autocad.registry_autocad_candidates", _candidates
+    )
+
+    for _ in range(5):
+        assert runner.discover() == executable
+    assert len(walks) == 1
 
 
 def test_runner_discover_raises_when_missing(tmp_path, monkeypatch):

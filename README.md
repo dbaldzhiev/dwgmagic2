@@ -7,8 +7,8 @@ The pipeline (trusted-folder validation → preprocessing → script generation 
 - **Pipeline orchestration** — discrete stages with shared context, per-stage timing, and structured results.
 - **Resilient AutoCAD execution** — bounded parallelism, per-job timeouts, live console output streaming, cancellation, and failure detection that catches jobs which "succeed" with a zero exit code but fail in their output.
 - **Output validation** — sheet batches must actually produce their `*_xrefed.dwg` files before the merge is attempted; the final deliverables (`<project>_MXR.dwg`, `<project>_MM.dwg`) are verified and reported with sizes.
-- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects, and the GUI asks for confirmation before the first run in a folder.
-- **Run tracking** — every run writes a chronological `logs/run.log`, per-job console dumps under `logs/jobs/`, and a machine-readable manifest `logs/run_<timestamp>.json`.
+- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects.
+- **Run tracking** — every run writes a chronological `logs/run_<timestamp>.log`, per-job console dumps under `logs/jobs/`, and a machine-readable manifest `logs/run_<timestamp>.json`.
 - **Auto-update** — the GUI checks GitHub releases on startup and can replace itself in place.
 
 ## Installation
@@ -45,11 +45,19 @@ A startup failure writes a full traceback to `%LOCALAPPDATA%\dwgmagic2\logs\cras
 ```
 dwgmagic2w.exe [project_directory]
 ```
-- Open a project via the button, the recent-projects list, or by dropping a folder onto the window.
-- Preflight checks for AutoCAD, the `tectonica.dll` plugin, and the trusted-path configuration (with a one-click fix).
-- Stage table with per-stage timing; task tree with per-job status, exit codes, durations, and **live AutoCAD console output**.
-- **Cancel Run** stops scheduling new jobs and kills running AutoCAD consoles.
-- Light/Dark/System appearance; window size, appearance, and recent projects persist between sessions.
+The window is organised around the run lifecycle:
+
+- **Project bar** — project identity, what the folder holds (`6 DWG · 3 sheets · 3 views`, with warning chips for ignored or orphan files), and a health pill that expands into the AutoCAD / plugin / trusted-path detail with a one-click fix.
+- **Run panel** — before the run, exactly what will be created and **what will be deleted**; during it, the current phase, elapsed time, an ETA, and Cancel.
+- **Work view** — one tree of stages → batches → jobs with live AutoCAD console output per job, `All / Running / Failed` filters, and **Open job log** on failures.
+- **Result panel** — deliverables you can open or reveal in Explorer, failures that click through to their output, and Open logs folder / Open manifest / Copy report.
+- **Logs tab** — level filter, search, and autoscroll.
+
+Open a project via the button, the Recent menu, or by dropping a folder onto the window. Keyboard: **Ctrl+O** open, **F5** run, **Esc** cancel. **Cancel** stops scheduling new jobs and kills running AutoCAD process trees; closing mid-run waits for them to exit rather than orphaning them.
+
+Light/Dark/System appearance; window size, appearance, parallel-job count, and recent projects persist between sessions.
+
+**Projects on network shares are supported.** AutoCAD refuses to load a script file from a network location, so generated `.scr` files are staged to a local temp folder and executed from there; the project keeps its own readable copy in `scripts/` and the DWGs stay where they are.
 
 `--autorun` starts the pipeline automatically once the project loads (used by the context-menu integration).
 
@@ -66,7 +74,7 @@ Common flags (both front-ends):
 - `--version` — print the application version.
 
 ## Configuration
-Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py). Precedence: CLI flags > config file (`--config`, TOML/YAML) > environment variables > defaults.
+Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py). Precedence: CLI flags > environment variables > config file (`--config`, TOML/YAML) > defaults.
 
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |
@@ -132,7 +140,7 @@ Use `-NoPublish` to build the assets without tagging or publishing, and `-SkipTe
 ## Project Structure
 - `dwgmagic/core/` — pipeline primitives and stage implementations.
 - `dwgmagic/integrations/` — AutoCAD runner/coordinator (subprocess management, discovery).
-- `dwgmagic/gui/` — CustomTkinter application and persisted UI state.
+- `dwgmagic/gui/` — the window and event wiring (`app.py`), colour tokens (`theme.py`), persisted UI state, and one module per zone under `gui/views/`.
 - `dwgmagic/ui/` — shared progress listeners for CLI and GUI.
 - `dwgmagic/templates/` — packaged Jinja templates for AutoCAD script generation.
 - `dwgmagic/classify.py` — the single source of truth for the sheet/view file-naming convention.
@@ -145,7 +153,7 @@ Use `-NoPublish` to build the assets without tagging or publishing, and `-SkipTe
 
 ## Troubleshooting a failed run
 Inside the project folder:
-- `logs/run.log` — chronological log of the whole run, all components.
+- `logs/run_<timestamp>.log` — chronological log of one run, all components. Previous runs are kept (most recent 20).
 - `logs/jobs/<script>.out.txt` — raw AutoCAD console output per job.
 - `logs/run_<timestamp>.json` — the run manifest: settings snapshot, stage timings, per-job exit codes/durations/failure reasons, deliverable status.
 
@@ -157,5 +165,5 @@ GitHub Actions runs the test suite and a full PyInstaller build on every push/PR
 ## Contributing & Support
 Issues and pull requests are welcome. When reporting bugs, include:
 - The command you ran (CLI arguments or GUI launch instructions).
-- The run manifest and relevant snippets from `logs/run.log`, or `crash.log` for startup failures.
+- The run manifest and relevant snippets from the newest `logs/run_<timestamp>.log`, or `crash.log` for startup failures.
 - AutoCAD job output from `logs/jobs/`, if applicable.

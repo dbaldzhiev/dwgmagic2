@@ -109,8 +109,18 @@ class TrustedFolderChecker:
                 hint="Reinstall DWGMAGIC — releases ship tectonica.dll alongside the executable.",
             )
 
-        script_path = self._resolve_script(settings)
-        result = self._runner.run_script(script_path=script_path, logger=logger)
+        script_path, is_temporary = self._resolve_script(settings)
+        try:
+            result = self._runner.run_script(script_path=script_path, logger=logger)
+        finally:
+            if is_temporary:
+                # This check runs at startup, on every project load and as
+                # stage 1 of every run; without this the temp files pile up
+                # forever, because the static fallback script is never shipped.
+                try:
+                    script_path.unlink(missing_ok=True)
+                except OSError:  # pragma: no cover - AV/permission quirks
+                    pass
         if not result.succeeded:
             reason = getattr(result, "failure_reason", None) or f"exit code {result.returncode}"
             raise TrustedFolderError(
@@ -121,12 +131,15 @@ class TrustedFolderChecker:
                 ),
             )
 
-    def _resolve_script(self, settings: Settings) -> Path:
-        """Use a pre-existing check script if present, else generate one."""
+    def _resolve_script(self, settings: Settings) -> tuple[Path, bool]:
+        """Use a pre-existing check script if present, else generate one.
+
+        Returns the path and whether the caller owns it (and must delete it).
+        """
 
         static_script = settings.tectonica_path / settings.trusted_folder_script
         if static_script.exists():
-            return static_script
+            return static_script, False
 
         dll = (settings.tectonica_path / "tectonica.dll").as_posix()
         handle = tempfile.NamedTemporaryFile(
@@ -139,7 +152,7 @@ class TrustedFolderChecker:
         )
         with handle as fh:
             fh.write(f'netload "{dll}"\n')
-        return Path(handle.name)
+        return Path(handle.name), True
 
 
 class AutoCadRunnerProtocol:

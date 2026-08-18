@@ -9,10 +9,17 @@ from typing import List, Optional, Sequence, Tuple
 from dwgmagic.classify import classify_dwg_files
 from dwgmagic.core.pipeline import CANCEL_EVENT_KEY, PipelineStage
 from dwgmagic.errors import DwgmagicError, PipelineCancelledError
-from dwgmagic.integrations.autocad import AutoCadCoordinator, AutoCadJob, AutoCadResult, AutoCadRunner
+from dwgmagic.integrations.autocad import (
+    AutoCadCoordinator,
+    AutoCadJob,
+    AutoCadResult,
+    AutoCadRunner,
+    PlannedBatch,
+    notify_listener,
+)
 from dwgmagic.logger import LoggerFactory
 from dwgmagic.miscutil import Preprocessor
-from dwgmagic.script_generator import ScriptGenerator
+from dwgmagic.script_generator import ScriptGenerator, execution_scripts_dir
 from dwgmagic.trusted_folder import TrustedFolderChecker
 from jinja2 import Environment
 
@@ -139,6 +146,17 @@ class AutoCadStage(PipelineStage):
             listener = context.get("autocad_listener")
             cancel_event: Optional[threading.Event] = context.get(CANCEL_EVENT_KEY)
 
+            # Every job is known here, before any batch runs. Publishing the
+            # whole plan up front is what lets a front-end show a total that
+            # never moves — queuing batch-by-batch made the denominator grow
+            # mid-run, so progress went backwards between batches.
+            batches = (
+                PlannedBatch("views", tuple(job.name for job in state.view_jobs)),
+                PlannedBatch("sheets", tuple(job.name for job in state.sheet_jobs)),
+                PlannedBatch("merge", tuple(job.name for job in state.merge_jobs)),
+            )
+            notify_listener(listener, "on_jobs_planned", batches)
+
             def _check_cancelled() -> None:
                 if cancel_event is not None and cancel_event.is_set():
                     raise PipelineCancelledError()
@@ -239,7 +257,9 @@ class AutoCadStage(PipelineStage):
     def _build_jobs(self, context: ProjectContext) -> "AutoCadStage.StageJobs":
         project_root = context.project_root
         derevitized = project_root / "derevitized"
-        scripts_dir = project_root / "scripts"
+        # Run the staged local copies: AutoCAD will not load a script from a
+        # network path. The drawings stay where the project is.
+        scripts_dir = execution_scripts_dir(project_root)
 
         classified = classify_dwg_files(context.get("dwg_files", []))
         view_files = classified.views

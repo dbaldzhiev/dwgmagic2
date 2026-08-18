@@ -118,7 +118,9 @@ def _validated_log_level(value: object) -> str:
         raise ValueError(
             f"Invalid log level {value!r}; expected one of {sorted(_VALID_LOG_LEVELS)}"
         )
-    assert isinstance(getattr(logging, level), int)
+    # Not an assert: validation must survive `python -O`.
+    if not isinstance(getattr(logging, level, None), int):
+        raise ValueError(f"Log level {level!r} is not exposed by the logging module")
     return level
 
 

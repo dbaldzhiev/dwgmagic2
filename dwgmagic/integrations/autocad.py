@@ -33,6 +33,32 @@ FAILURE_MARKERS: Tuple[str, ...] = (
 _POLL_INTERVAL = 0.25
 
 
+def terminate_process_tree(process: subprocess.Popen) -> None:
+    """Kill ``process`` and everything it spawned.
+
+    ``accoreconsole`` starts child processes of its own; killing only the
+    top-level handle leaves them running, holding locks on the project's DWG
+    files. ``taskkill /T`` is used because it is the only way to reach the
+    whole tree without a third-party dependency.
+    """
+
+    if process.poll() is not None:
+        return
+    try:
+        subprocess.run(  # noqa: S603 - fixed argv, pid is our own child
+            ["taskkill", "/F", "/T", "/PID", str(process.pid)],
+            capture_output=True,
+            timeout=15,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        pass  # fall through to the direct kill below
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
 def registry_autocad_candidates() -> Tuple[Path, ...]:
     """Discover accoreconsole.exe locations from the AutoCAD registry keys."""
 
@@ -131,6 +157,18 @@ class AutoCadResult:
         return "\n".join(combined.splitlines()[-lines:])
 
 
+@dataclass(frozen=True, slots=True)
+class PlannedBatch:
+    """One execution batch, known before any job in it starts.
+
+    Published up front so a front-end can show a total that never moves;
+    counting jobs as each batch is queued made the denominator grow mid-run.
+    """
+
+    label: str
+    job_names: Tuple[str, ...]
+
+
 @dataclass(slots=True)
 class AutoCadJob:
     name: str
@@ -154,11 +192,24 @@ class AutoCadRunner:
     def __init__(self, settings: Settings, *, timeout: Optional[float] = None) -> None:
         self.settings = settings
         self.timeout = timeout if timeout is not None else settings.job_timeout
+        self._executable: Optional[Path] = None
+        self._discover_lock = threading.Lock()
 
     def discover(self) -> Path:
-        return discover_autocad(
-            self.settings.autocad_executable, self.settings.autocad_candidates
-        )
+        """Locate accoreconsole.exe once per runner.
+
+        Called at the top of every job from every worker thread; without
+        memoisation this re-walks the AutoCAD registry keys hundreds of times
+        per run.
+        """
+
+        if self._executable is None:
+            with self._discover_lock:
+                if self._executable is None:
+                    self._executable = discover_autocad(
+                        self.settings.autocad_executable, self.settings.autocad_candidates
+                    )
+        return self._executable
 
     def run_script(
         self,
@@ -223,7 +274,7 @@ class AutoCadRunner:
             if cancel_event is not None and cancel_event.is_set():
                 failure_reason = "cancelled"
                 logger.warning("Cancelling AutoCAD job %s", script_path.stem)
-                process.kill()
+                terminate_process_tree(process)
                 process.wait()
                 break
             if deadline is not None and time.monotonic() > deadline:
@@ -233,7 +284,7 @@ class AutoCadRunner:
                     script_path.stem,
                     self.timeout,
                 )
-                process.kill()
+                terminate_process_tree(process)
                 process.wait()
                 break
             time.sleep(_POLL_INTERVAL)
@@ -312,7 +363,7 @@ class AutoCadCoordinator:
     ) -> Sequence[AutoCadResult]:
         results: List[AutoCadResult] = []
         for job in jobs:
-            _notify(listener, "on_job_queued", job)
+            notify_listener(listener, "on_job_queued", job)
 
         with ThreadPoolExecutor(max_workers=self._resolve_workers()) as executor:
             future_map = {
@@ -325,7 +376,7 @@ class AutoCadCoordinator:
                     result = future.result()
                 except Exception as exc:  # noqa: BLE001 - job crash becomes a failed result
                     logger.error("Job %s crashed: %s", job.name, exc)
-                    _notify(listener, "on_job_failed", job, exc)
+                    notify_listener(listener, "on_job_failed", job, exc)
                     result = AutoCadResult(
                         name=job.name,
                         returncode=-1,
@@ -342,7 +393,7 @@ class AutoCadCoordinator:
                         result.returncode,
                         result.duration,
                     )
-                    _notify(listener, "on_job_completed", result)
+                    notify_listener(listener, "on_job_completed", result)
                     results.append(result)
         return results
 
@@ -362,10 +413,10 @@ class AutoCadCoordinator:
                 command=(),
                 failure_reason="cancelled",
             )
-        _notify(listener, "on_job_started", job)
+        notify_listener(listener, "on_job_started", job)
 
         def _forward_output(line: str) -> None:
-            _notify(listener, "on_job_output", job.name, line)
+            notify_listener(listener, "on_job_output", job.name, line)
 
         result = self.runner.run_script(
             script_path=job.script_path,
@@ -379,6 +430,9 @@ class AutoCadCoordinator:
 
 class AutoCadProgressListener(Protocol):
     """Observer for AutoCAD job execution."""
+
+    def on_jobs_planned(self, batches: Sequence[PlannedBatch]) -> None:  # pragma: no cover - interface
+        ...
 
     def on_job_queued(self, job: AutoCadJob) -> None:  # pragma: no cover - interface
         ...
@@ -396,7 +450,7 @@ class AutoCadProgressListener(Protocol):
         ...
 
 
-def _notify(listener: Optional[AutoCadProgressListener], method: str, *args) -> None:
+def notify_listener(listener: Optional[AutoCadProgressListener], method: str, *args) -> None:
     if listener is None:
         return
     callback = getattr(listener, method, None)
@@ -413,6 +467,9 @@ __all__ = [
     "AutoCadRunner",
     "AutoCadCoordinator",
     "AutoCadProgressListener",
+    "PlannedBatch",
+    "notify_listener",
+    "terminate_process_tree",
     "discover_autocad",
     "registry_autocad_candidates",
     "FAILURE_MARKERS",
