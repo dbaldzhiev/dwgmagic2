@@ -9,7 +9,14 @@ from typing import List, Optional, Sequence, Tuple
 from dwgmagic.classify import classify_dwg_files
 from dwgmagic.core.pipeline import CANCEL_EVENT_KEY, PipelineStage
 from dwgmagic.errors import DwgmagicError, PipelineCancelledError
-from dwgmagic.integrations.autocad import AutoCadCoordinator, AutoCadJob, AutoCadResult, AutoCadRunner
+from dwgmagic.integrations.autocad import (
+    AutoCadCoordinator,
+    AutoCadJob,
+    AutoCadResult,
+    AutoCadRunner,
+    PlannedBatch,
+    notify_listener,
+)
 from dwgmagic.logger import LoggerFactory
 from dwgmagic.miscutil import Preprocessor
 from dwgmagic.script_generator import ScriptGenerator
@@ -138,6 +145,17 @@ class AutoCadStage(PipelineStage):
             state = self._build_jobs(context)
             listener = context.get("autocad_listener")
             cancel_event: Optional[threading.Event] = context.get(CANCEL_EVENT_KEY)
+
+            # Every job is known here, before any batch runs. Publishing the
+            # whole plan up front is what lets a front-end show a total that
+            # never moves — queuing batch-by-batch made the denominator grow
+            # mid-run, so progress went backwards between batches.
+            batches = (
+                PlannedBatch("views", tuple(job.name for job in state.view_jobs)),
+                PlannedBatch("sheets", tuple(job.name for job in state.sheet_jobs)),
+                PlannedBatch("merge", tuple(job.name for job in state.merge_jobs)),
+            )
+            notify_listener(listener, "on_jobs_planned", batches)
 
             def _check_cancelled() -> None:
                 if cancel_event is not None and cancel_event.is_set():

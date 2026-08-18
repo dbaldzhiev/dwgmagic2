@@ -157,6 +157,18 @@ class AutoCadResult:
         return "\n".join(combined.splitlines()[-lines:])
 
 
+@dataclass(frozen=True, slots=True)
+class PlannedBatch:
+    """One execution batch, known before any job in it starts.
+
+    Published up front so a front-end can show a total that never moves;
+    counting jobs as each batch is queued made the denominator grow mid-run.
+    """
+
+    label: str
+    job_names: Tuple[str, ...]
+
+
 @dataclass(slots=True)
 class AutoCadJob:
     name: str
@@ -351,7 +363,7 @@ class AutoCadCoordinator:
     ) -> Sequence[AutoCadResult]:
         results: List[AutoCadResult] = []
         for job in jobs:
-            _notify(listener, "on_job_queued", job)
+            notify_listener(listener, "on_job_queued", job)
 
         with ThreadPoolExecutor(max_workers=self._resolve_workers()) as executor:
             future_map = {
@@ -364,7 +376,7 @@ class AutoCadCoordinator:
                     result = future.result()
                 except Exception as exc:  # noqa: BLE001 - job crash becomes a failed result
                     logger.error("Job %s crashed: %s", job.name, exc)
-                    _notify(listener, "on_job_failed", job, exc)
+                    notify_listener(listener, "on_job_failed", job, exc)
                     result = AutoCadResult(
                         name=job.name,
                         returncode=-1,
@@ -381,7 +393,7 @@ class AutoCadCoordinator:
                         result.returncode,
                         result.duration,
                     )
-                    _notify(listener, "on_job_completed", result)
+                    notify_listener(listener, "on_job_completed", result)
                     results.append(result)
         return results
 
@@ -401,10 +413,10 @@ class AutoCadCoordinator:
                 command=(),
                 failure_reason="cancelled",
             )
-        _notify(listener, "on_job_started", job)
+        notify_listener(listener, "on_job_started", job)
 
         def _forward_output(line: str) -> None:
-            _notify(listener, "on_job_output", job.name, line)
+            notify_listener(listener, "on_job_output", job.name, line)
 
         result = self.runner.run_script(
             script_path=job.script_path,
@@ -418,6 +430,9 @@ class AutoCadCoordinator:
 
 class AutoCadProgressListener(Protocol):
     """Observer for AutoCAD job execution."""
+
+    def on_jobs_planned(self, batches: Sequence[PlannedBatch]) -> None:  # pragma: no cover - interface
+        ...
 
     def on_job_queued(self, job: AutoCadJob) -> None:  # pragma: no cover - interface
         ...
@@ -435,7 +450,7 @@ class AutoCadProgressListener(Protocol):
         ...
 
 
-def _notify(listener: Optional[AutoCadProgressListener], method: str, *args) -> None:
+def notify_listener(listener: Optional[AutoCadProgressListener], method: str, *args) -> None:
     if listener is None:
         return
     callback = getattr(listener, method, None)
@@ -452,6 +467,9 @@ __all__ = [
     "AutoCadRunner",
     "AutoCadCoordinator",
     "AutoCadProgressListener",
+    "PlannedBatch",
+    "notify_listener",
+    "terminate_process_tree",
     "discover_autocad",
     "registry_autocad_candidates",
     "FAILURE_MARKERS",

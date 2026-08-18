@@ -8,7 +8,12 @@ from rich.console import Console
 
 from dwgmagic.core.context import ProjectContext, StageResult
 from dwgmagic.core.pipeline import PipelineListener
-from dwgmagic.integrations.autocad import AutoCadJob, AutoCadProgressListener, AutoCadResult
+from dwgmagic.integrations.autocad import (
+    AutoCadJob,
+    AutoCadProgressListener,
+    AutoCadResult,
+    PlannedBatch,
+)
 
 
 @dataclass(slots=True)
@@ -17,6 +22,17 @@ class ProgressEvent:
 
     kind: str
     payload: Dict[str, Any]
+
+
+def plan_payload(batches: Sequence[PlannedBatch]) -> Dict[str, Any]:
+    """Shape the planned job set for transport to a front-end."""
+
+    return {
+        "total": sum(len(batch.job_names) for batch in batches),
+        "batches": [
+            {"label": batch.label, "jobs": list(batch.job_names)} for batch in batches
+        ],
+    }
 
 
 class ConsoleProgressListener(PipelineListener, AutoCadProgressListener):
@@ -45,6 +61,11 @@ class ConsoleProgressListener(PipelineListener, AutoCadProgressListener):
             )
         else:
             self.console.print("[yellow]Pipeline produced no results[/yellow]")
+
+    def on_jobs_planned(self, batches: Sequence[PlannedBatch]) -> None:
+        summary = ", ".join(f"{len(b.job_names)} {b.label}" for b in batches if b.job_names)
+        total = sum(len(batch.job_names) for batch in batches)
+        self.console.print(f"[cyan]Planned {total} AutoCAD job(s):[/cyan] {summary}")
 
     def on_job_queued(self, job: AutoCadJob) -> None:
         self.console.log(
@@ -103,6 +124,9 @@ class QueueProgressListener(PipelineListener, AutoCadProgressListener):
         ]
         self.queue.put(ProgressEvent("pipeline_completed", {"results": summary}))
 
+    def on_jobs_planned(self, batches: Sequence[PlannedBatch]) -> None:
+        self.queue.put(ProgressEvent("jobs_planned", plan_payload(batches)))
+
     def on_job_queued(self, job: AutoCadJob) -> None:
         self.queue.put(
             ProgressEvent(
@@ -153,5 +177,7 @@ class QueueProgressListener(PipelineListener, AutoCadProgressListener):
 __all__ = [
     "ConsoleProgressListener",
     "QueueProgressListener",
+    "PlannedBatch",
     "ProgressEvent",
+    "plan_payload",
 ]

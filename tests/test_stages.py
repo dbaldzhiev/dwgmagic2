@@ -358,6 +358,45 @@ def test_autocad_stage_builds_jobs(tmp_path):
     )
 
 
+def test_autocad_stage_publishes_the_whole_plan_before_running(tmp_path):
+    """The job total must be known up front, or progress runs backwards.
+
+    Jobs used to be counted as each batch was queued, so the denominator grew
+    mid-run: after the view batch the bar showed ~75%, then the sheet batch
+    queued and it dropped to ~67%.
+    """
+
+    context, settings = make_context(tmp_path)
+    _prepare_autocad_project(tmp_path, context)
+
+    planned = []
+    queue_order = []
+
+    class PlanRecordingCoordinator(FakeCoordinator):
+        def execute(self, jobs, logger, listener=None, cancel_event=None):
+            for job in jobs:
+                queue_order.append(job.name)
+            return super().execute(jobs, logger, listener=listener, cancel_event=cancel_event)
+
+    listener = SimpleNamespace(
+        on_jobs_planned=lambda batches: planned.append(batches),
+        on_job_queued=lambda job: None,
+    )
+    context.set("autocad_listener", listener)
+
+    stage = AutoCadStage(PlanRecordingCoordinator(), LoggerFactory(settings))
+    assert stage.run(context).succeeded is True
+
+    assert len(planned) == 1, "the plan is published exactly once"
+    batches = planned[0]
+    assert [batch.label for batch in batches] == ["views", "sheets", "merge"]
+
+    total = sum(len(batch.job_names) for batch in batches)
+    assert total == len(queue_order), "planned total must match what actually ran"
+    # And it is known before the first job is dispatched.
+    assert total == 3
+
+
 def test_autocad_stage_fails_when_job_fails(tmp_path):
     context, settings = make_context(tmp_path)
     _prepare_autocad_project(tmp_path, context)

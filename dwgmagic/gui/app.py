@@ -152,6 +152,7 @@ class GuiApplication(_RootWindow):
         self.completed_stages = 0
         self.job_total = 0
         self.job_completed = 0
+        self._job_total_is_final = False
         self.job_states: dict[str, dict[str, str | int | None]] = {}
         self.job_logs: dict[str, list[str]] = {}
         self.task_info: dict[str, dict[str, str | int | float | None]] = {}
@@ -939,6 +940,7 @@ class GuiApplication(_RootWindow):
         self.task_parents = {"merge": ""}
         self.job_total = 0
         self.job_completed = 0
+        self._job_total_is_final = False
 
         self.task_tree.insert(
             "",
@@ -1472,12 +1474,25 @@ class GuiApplication(_RootWindow):
             self.recent_menu.configure(state="normal")
             self.workers_menu.configure(state="normal")
             self.cancel_button.configure(state="disabled", text="■   Cancel Run")
+        elif kind == "jobs_planned":
+            # The full job set, known before the first batch starts. Fixing the
+            # denominator here is what keeps the progress bar monotonic.
+            self.job_total = int(payload.get("total") or 0)
+            self._job_total_is_final = self.job_total > 0
+            batch_summary = ", ".join(
+                f"{len(batch.get('jobs') or [])} {batch.get('label')}"
+                for batch in payload.get("batches") or []
+                if batch.get("jobs")
+            )
+            self._append_log(f"Planned {self.job_total} AutoCAD job(s): {batch_summary}")
+            self._update_progress()
         elif kind == "job_queued":
             job_name = payload["name"]
             script_path = payload.get("script") or ""
             script_display = Path(script_path).name if script_path else "—"
             self.job_states[job_name] = {"status": "Queued", "code": None}
-            self.job_total += 1
+            if not self._job_total_is_final:
+                self.job_total += 1
             self._ensure_task_node(job_name)
             self._set_task_status(job_name, "queued", script=script_display)
             self._append_task_log(job_name, f"Queued (script: {script_display})")
