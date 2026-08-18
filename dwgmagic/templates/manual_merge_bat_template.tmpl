@@ -1,5 +1,18 @@
+@echo off
 rem pushd maps a drive letter for UNC paths, which cmd cannot use as a cwd.
 pushd "%~dp0"
-"{{ acc }}" /i "%cd%/{{ project_name }}_MXR.dwg" /s "%cd%/scripts/MMM.scr"
+rem AutoCAD refuses to load a script from a network location, so the script is
+rem copied to the local temp folder and run from there. The drawing may stay
+rem on the share.
+set "DWGMAGIC_SCR=%TEMP%\dwgmagic_manualmerge_%RANDOM%.scr"
+copy /y "%cd%\scripts\MMM.scr" "%DWGMAGIC_SCR%" >nul
+if errorlevel 1 (
+    echo ERROR: could not copy scripts\MMM.scr to %TEMP%.
+    popd
+    pause
+    exit /b 1
+)
+"{{ acc }}" /i "%cd%\{{ project_name }}_MXR.dwg" /s "%DWGMAGIC_SCR%"
+del "%DWGMAGIC_SCR%" >nul 2>&1
 popd
 pause

@@ -19,7 +19,7 @@ from dwgmagic.integrations.autocad import (
 )
 from dwgmagic.logger import LoggerFactory
 from dwgmagic.miscutil import Preprocessor
-from dwgmagic.script_generator import ScriptGenerator
+from dwgmagic.script_generator import ScriptGenerator, execution_scripts_dir
 from dwgmagic.trusted_folder import TrustedFolderChecker
 from jinja2 import Environment
 
@@ -257,7 +257,9 @@ class AutoCadStage(PipelineStage):
     def _build_jobs(self, context: ProjectContext) -> "AutoCadStage.StageJobs":
         project_root = context.project_root
         derevitized = project_root / "derevitized"
-        scripts_dir = project_root / "scripts"
+        # Run the staged local copies: AutoCAD will not load a script from a
+        # network path. The drawings stay where the project is.
+        scripts_dir = execution_scripts_dir(project_root)
 
         classified = classify_dwg_files(context.get("dwg_files", []))
         view_files = classified.views

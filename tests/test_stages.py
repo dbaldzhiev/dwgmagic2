@@ -358,6 +358,59 @@ def test_autocad_stage_builds_jobs(tmp_path):
     )
 
 
+def test_scripts_are_staged_locally_for_execution(tmp_path):
+    """AutoCAD will not load a script from a network location.
+
+    It reports "File load canceled" and exits 0 having done nothing, so every
+    job looks like it succeeded. The project keeps its readable copy; the jobs
+    point at a local staging directory.
+    """
+
+    from dwgmagic.script_generator import execution_scripts_dir
+
+    context, settings = make_context(tmp_path)
+    context.set("dwg_files", ["SheetA.dwg", "SheetA-View-1.dwg"])
+    env = Environment(
+        loader=DictLoader(
+            {
+                "templates/project_script_template.tmpl": "merge",
+                "templates/mmm_script_template.tmpl": "mmm",
+                "templates/manual_merge_bat_template.tmpl": "bat {{ acc }}",
+                "templates/view_script_template.tmpl": "view",
+                "templates/sheet_script_template.tmpl": "sheet",
+            }
+        ),
+    )
+    context.environment = env
+    ScriptGenerationStage(ScriptGenerator(env), LoggerFactory(settings)).run(context)
+
+    staged = execution_scripts_dir(tmp_path)
+    assert (staged / "SHEETA_SHEET.scr").exists(), "jobs run from the local copy"
+    assert (tmp_path / "scripts" / "SHEETA_SHEET.scr").exists(), "project keeps a copy"
+    # The .bat is not a script AutoCAD loads, so it is not staged.
+    assert not (staged / "MANUALMERGE.bat").exists()
+
+    stage = AutoCadStage(FakeCoordinator(), LoggerFactory(settings))
+    jobs = stage._build_jobs(context)
+    for job in jobs.view_jobs + jobs.sheet_jobs + jobs.merge_jobs:
+        assert job.script_path.parent == staged, job.script_path
+        # Inputs stay where the project is.
+    assert jobs.sheet_jobs[0].input_path.is_relative_to(tmp_path)
+
+
+def test_execution_dir_is_local_and_stable_per_project():
+    from dwgmagic.script_generator import execution_scripts_dir
+
+    remote = Path(r"\\SERVER\share\KACHAKOVI\260817_testmerge")
+    staged = execution_scripts_dir(remote)
+
+    assert not str(staged).startswith("\\\\"), "must not be a UNC path"
+    assert execution_scripts_dir(remote) == staged, "stable across calls"
+    # Two projects with the same leaf name must not collide.
+    other = execution_scripts_dir(Path(r"C:\elsewhere\260817_testmerge"))
+    assert other != staged
+
+
 def test_autocad_stage_publishes_the_whole_plan_before_running(tmp_path):
     """The job total must be known up front, or progress runs backwards.
 
