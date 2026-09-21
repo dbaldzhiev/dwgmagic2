@@ -1000,7 +1000,12 @@ class GuiApplication(_RootWindow):
                 self.event_queue.put(
                     ProgressEvent(
                         "update_available",
-                        {"latest": info.latest, "current": info.current, "url": info.url},
+                        {
+                            "latest": info.latest,
+                            "current": info.current,
+                            "url": info.url,
+                            "package_url": info.package_url,
+                        },
                     )
                 )
 
@@ -1013,7 +1018,8 @@ class GuiApplication(_RootWindow):
             )
             return
         info = self._update_info or {}
-        if launch_updater(relaunch_gui=True):
+        package_url = info.get("package_url")
+        if package_url and launch_updater(package_url, relaunch_gui=True):
             messagebox.showinfo(
                 "Updating",
                 "The updater has been started. DWGMAGIC will close now and "
