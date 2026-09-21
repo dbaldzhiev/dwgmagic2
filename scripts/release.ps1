@@ -20,13 +20,13 @@
 .PARAMETER NoPublish
     Build and package, but do not create the GitHub release.
 .PARAMETER Python
-    Interpreter used to create the build environment (default: py -3.12).
+    Interpreter used to create the build environment (default: py -3.14).
 #>
 param(
     [switch]$SkipTectonica,
     [switch]$SkipTests,
     [switch]$NoPublish,
-    [string]$Python = "py -3.12"
+    [string]$Python = "py -3.14"
 )
 
 $ErrorActionPreference = "Stop"

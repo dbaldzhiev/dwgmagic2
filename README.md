@@ -101,7 +101,7 @@ python -m pytest
 
 ### Building the bundle locally
 ```powershell
-py -3.12 -m venv .venv-build
+py -3.14 -m venv .venv-build
 .\.venv-build\Scripts\python.exe -m pip install -r requirements.txt pyinstaller
 .\.venv-build\Scripts\python.exe -m PyInstaller dwgmagic2.spec --noconfirm --clean
 ```
