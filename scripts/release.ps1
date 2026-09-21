@@ -119,11 +119,13 @@ try {
             throw "updater.ps1 must be pure ASCII; found $($nonAscii.Count) non-ASCII character(s): $shown"
         }
 
-        # APP_ROOT is the executable's directory when frozen, so these two live
+        # APP_ROOT is the executable's directory when frozen, so these live
         # beside the exe rather than inside _internal.
+        $LspSrc = Join-Path $RepoRoot "FixSpotElevations.lsp"
         Copy-Item $DllPath (Join-Path $DistDir "tectonica.dll") -Force
         Copy-Item $updaterSrc (Join-Path $DistDir "updater.ps1") -Force
-        Write-Host "tectonica.dll and updater.ps1 placed next to the executables"
+        Copy-Item $LspSrc (Join-Path $DistDir "FixSpotElevations.lsp") -Force
+        Write-Host "tectonica.dll, updater.ps1, and FixSpotElevations.lsp placed next to the executables"
     }
 
     # --- Installer ---------------------------------------------------------

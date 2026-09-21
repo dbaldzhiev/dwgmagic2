@@ -61,6 +61,34 @@ def test_generated_scripts_address_outputs_absolutely(tmp_path):
     assert f'"{project_path}\\Proj_MMM.dwg"' in merge
 
 
+def test_sheet_script_fix_spot_elevations_toggle(tmp_path):
+    settings = Settings(project_root=tmp_path, tectonica_path=tmp_path)
+    environment = main.build_environment(settings)
+    common = {
+        "tectonica_path": tmp_path.as_posix(),
+        "project_name": "Proj",
+        "project_path": r"\\server\share\Proj",
+        "xrefXplodeToggle": True,
+        "sheetName": "1",
+        "viewsOnSheet": [],
+    }
+
+    template = environment.get_template("templates/sheet_script_template.tmpl")
+
+    enabled = template.render(fixSpotElevations=True, **common)
+    assert f'(load "{tmp_path.as_posix()}/FixSpotElevations.lsp")' in enabled
+    assert "MCPFIXSPOT" in enabled
+
+    disabled = template.render(fixSpotElevations=False, **common)
+    assert "MCPFIXSPOT" not in disabled
+    assert "FixSpotElevations.lsp" not in disabled
+
+    # Omitting the flag entirely (older callers) must not error and must
+    # default to disabled.
+    omitted = template.render(**common)
+    assert "MCPFIXSPOT" not in omitted
+
+
 def test_parse_args_defaults_to_gui():
     args = parse_args([])
     assert args.cli is False

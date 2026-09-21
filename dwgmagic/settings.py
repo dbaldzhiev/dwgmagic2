@@ -56,6 +56,8 @@ class Settings:
     log_encoding: str = "utf-8"
     log_level: str = "DEBUG"
     xref_xplode_toggle: bool = True
+    #: Run FixSpotElevations.lsp (MCPFIXSPOT) on each sheet before merge.
+    fix_spot_elevations: bool = False
     #: Maximum simultaneous accoreconsole processes. Defaults to the CPU
     #: count; reduce it explicitly (config/env/GUI) if the machine struggles.
     max_workers: int = field(default_factory=lambda: os.cpu_count() or 4)
@@ -175,6 +177,10 @@ def load_settings(
     if env_xref is not None:
         data["xref_xplode_toggle"] = env_xref
 
+    env_fix_spot = _env_bool("FIX_SPOT_ELEVATIONS")
+    if env_fix_spot is not None:
+        data["fix_spot_elevations"] = env_fix_spot
+
     env_continue = _env_bool("CONTINUE_ON_ERROR")
     if env_continue is not None:
         data["continue_on_error"] = env_continue
@@ -222,6 +228,7 @@ def load_settings(
         log_encoding=str(data.get("log_encoding", "utf-8")),
         log_level=_validated_log_level(data.get("log_level", "DEBUG")),
         xref_xplode_toggle=bool(data.get("xref_xplode_toggle", True)),
+        fix_spot_elevations=bool(data.get("fix_spot_elevations", False)),
         max_workers=max_workers,
         job_timeout=job_timeout,
         script_encoding=str(data.get("script_encoding", "cp1251")),

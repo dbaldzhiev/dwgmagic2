@@ -94,6 +94,7 @@ class ScriptGenerator:
                 logger,
                 sheetName=name,
                 viewsOnSheet=views_on_sheet,
+                fixSpotElevations=context.settings.fix_spot_elevations,
             )
 
         return artifacts

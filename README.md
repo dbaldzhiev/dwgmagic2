@@ -84,6 +84,7 @@ Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py)
 | `job_timeout` | `DWGMAGIC_JOB_TIMEOUT` | `1800` | Seconds before a hung job is killed. |
 | `continue_on_error` | `DWGMAGIC_CONTINUE_ON_ERROR` | `false` | Keep going when individual jobs fail. |
 | `xref_xplode_toggle` | `DWGMAGIC_XREF_EXPLODE` | `true` | Use the tecbxt bind/explode path. |
+| `fix_spot_elevations` | `DWGMAGIC_FIX_SPOT_ELEVATIONS` | `false` | Run `FixSpotElevations.lsp` (`MCPFIXSPOT`) on each sheet before merge. |
 | `template_roots` | `DWGMAGIC_TEMPLATE_ROOT` | bundled | Extra template search roots. |
 | `log_dir` / `log_level` / `log_encoding` | `DWGMAGIC_LOG_DIR` / `_LOG_LEVEL` / `_LOG_ENCODING` | `logs` / `DEBUG` / `utf-8` | Logging behaviour. |
 | `script_encoding` | — | `cp1251` | Encoding of generated `.scr` files. |

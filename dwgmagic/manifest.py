@@ -38,6 +38,7 @@ def _settings_snapshot(context: ProjectContext) -> Dict[str, Any]:
         "tectonica_path": str(settings.tectonica_path),
         "autocad_executable": str(settings.autocad_executable) if settings.autocad_executable else None,
         "xref_xplode_toggle": settings.xref_xplode_toggle,
+        "fix_spot_elevations": settings.fix_spot_elevations,
         "max_workers": settings.max_workers,
         "job_timeout": settings.job_timeout,
         "continue_on_error": settings.continue_on_error,

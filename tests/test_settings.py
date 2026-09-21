@@ -75,6 +75,12 @@ def test_defaults_are_sane(tmp_path):
     assert settings.continue_on_error is False
     assert settings.check_updates is True
     assert settings.script_encoding == "cp1251"
+    assert settings.fix_spot_elevations is False
+
+
+def test_fix_spot_elevations_env_override(tmp_path):
+    settings = load_settings(tmp_path, env={"DWGMAGIC_FIX_SPOT_ELEVATIONS": "true"})
+    assert settings.fix_spot_elevations is True
 
 
 def test_invalid_log_level_rejected(tmp_path):

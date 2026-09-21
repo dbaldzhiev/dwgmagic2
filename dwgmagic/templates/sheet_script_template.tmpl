@@ -14,5 +14,9 @@ chspace all
 (command)
 model
 zoom all
+{% if fixSpotElevations %}
+(load "{{ tectonica_path }}/FixSpotElevations.lsp")
+MCPFIXSPOT
+{% endif %}
 save "{{ project_path }}\derevitized\{{ sheetName }}_xrefed.dwg"
 
