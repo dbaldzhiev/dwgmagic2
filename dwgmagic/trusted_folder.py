@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Set, Tuple
 
 from dwgmagic.errors import TrustedFolderError
 from dwgmagic.settings import Settings
@@ -91,6 +91,31 @@ def add_trusted_path(path: Path) -> List[str]:
     return modified
 
 
+#: Printed by tectonica's ``tecTest`` command. Seeing it proves the plugin
+#: actually loaded; the mere absence of a NETLOAD error message does not.
+PLUGIN_LOADED_MARKER = "HELLO! TEST! DEBUG TECTONICA!"
+
+#: Checks that passed in this process, keyed by what they depend on. A pass
+#: stays valid until the DLL, its location or the AutoCAD executable change,
+#: so stage 1 of a run does not cold-start accoreconsole again right after
+#: the GUI's preflight proved the same thing.
+_verified: Set[Tuple[str, str, float]] = set()
+
+
+def clear_verified_cache() -> None:
+    """Forget earlier passes (used by an explicit re-check)."""
+
+    _verified.clear()
+
+
+def _cache_key(settings: Settings, dll_path: Path) -> Optional[Tuple[str, str, float]]:
+    try:
+        mtime = dll_path.stat().st_mtime
+    except OSError:
+        return None
+    return (str(dll_path.resolve()), str(settings.autocad_executable), mtime)
+
+
 class TrustedFolderChecker:
     """Validates that AutoCAD can NETLOAD tectonica.dll from the app folder.
 
@@ -98,8 +123,9 @@ class TrustedFolderChecker:
     configured ``tectonica_path`` instead of a hardcoded location.
     """
 
-    def __init__(self, runner: "AutoCadRunnerProtocol") -> None:
+    def __init__(self, runner: "AutoCadRunnerProtocol", *, use_cache: bool = True) -> None:
         self._runner = runner
+        self._use_cache = use_cache
 
     def check(self, settings: Settings, logger) -> None:
         dll_path = settings.tectonica_path / "tectonica.dll"
@@ -108,6 +134,11 @@ class TrustedFolderChecker:
                 f"tectonica.dll not found at {dll_path}",
                 hint="Reinstall DWGMAGIC — releases ship tectonica.dll alongside the executable.",
             )
+
+        key = _cache_key(settings, dll_path)
+        if self._use_cache and key is not None and key in _verified:
+            logger.info("Trusted folder check already passed for %s; skipping", dll_path)
+            return
 
         script_path, is_temporary = self._resolve_script(settings)
         try:
@@ -130,6 +161,19 @@ class TrustedFolderChecker:
                     "(OPTIONS > Files > Trusted Locations, or the TRUSTEDPATHS variable)."
                 ),
             )
+        if is_temporary and PLUGIN_LOADED_MARKER not in (result.stdout or ""):
+            # accoreconsole can decline the load (untrusted location, blocked
+            # file) without printing any of the known failure markers.
+            raise TrustedFolderError(
+                "Trusted folder validation failed (tectonica did not respond to tecTest)",
+                hint=(
+                    f"Add {settings.tectonica_path} to AutoCAD's trusted locations "
+                    "(OPTIONS > Files > Trusted Locations, or the TRUSTEDPATHS variable). "
+                    "If it is already trusted, unblock tectonica.dll in its file properties."
+                ),
+            )
+        if key is not None:
+            _verified.add(key)
 
     def _resolve_script(self, settings: Settings) -> tuple[Path, bool]:
         """Use a pre-existing check script if present, else generate one.
@@ -151,7 +195,7 @@ class TrustedFolderChecker:
             errors="replace",
         )
         with handle as fh:
-            fh.write(f'netload "{dll}"\n')
+            fh.write(f'netload "{dll}"\ntectest\n')
         return Path(handle.name), True
 
 
@@ -162,4 +206,4 @@ class AutoCadRunnerProtocol:
         raise NotImplementedError
 
 
-__all__ = ["TrustedFolderChecker"]
+__all__ = ["TrustedFolderChecker", "PLUGIN_LOADED_MARKER", "clear_verified_cache"]

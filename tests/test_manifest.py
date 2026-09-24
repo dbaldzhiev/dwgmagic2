@@ -79,3 +79,9 @@ def test_summary_lines_report_outcome_and_deliverables(tmp_path):
     assert "merge: exit code 1" in text
     assert f"✓ {tmp_path.name}_MXR.dwg (2 KB)" in text
     assert f"✗ {tmp_path.name}_MM.dwg (missing)" in text
+
+
+def test_manifest_pairs_with_its_run_log(tmp_path):
+    context = make_context(tmp_path)
+    path = write_manifest(context, [StageResult("preprocess", True)], run_id="20260924_101500")
+    assert path == tmp_path / "logs" / "run_20260924_101500.json"

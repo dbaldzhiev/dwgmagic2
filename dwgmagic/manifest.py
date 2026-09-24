@@ -57,6 +57,7 @@ def _job_entries(results: Sequence[AutoCadResult]) -> List[Dict[str, Any]]:
                 "duration_s": round(result.duration, 2),
                 "failure_reason": result.failure_reason,
                 "command": list(result.command),
+                "log_path": str(result.log_path) if result.log_path else None,
             }
         )
     return entries
@@ -109,13 +110,21 @@ def build_manifest(
 
 
 def write_manifest(
-    context: ProjectContext, results: Sequence[StageResult], logger=None
+    context: ProjectContext,
+    results: Sequence[StageResult],
+    logger=None,
+    *,
+    run_id: Optional[str] = None,
 ) -> Optional[Path]:
-    """Persist the run manifest; returns the path or None when unwritable."""
+    """Persist the run manifest; returns the path or None when unwritable.
+
+    Pass the run's :attr:`LoggerFactory.run_id` so the manifest pairs with its
+    ``run_<id>.log``.
+    """
 
     manifest = build_manifest(context, results)
     log_dir = context.project_root / context.settings.log_dir
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = run_id or datetime.now().strftime("%Y%m%d_%H%M%S")
     path = log_dir / f"run_{timestamp}.json"
     try:
         log_dir.mkdir(parents=True, exist_ok=True)

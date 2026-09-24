@@ -145,6 +145,8 @@ class AutoCadResult:
     #: Populated when the job failed for a reason other than the exit code
     #: (timeout, cancellation, failure marker found in output).
     failure_reason: Optional[str] = None
+    #: Where the raw console output was saved (``logs/jobs/*.out.txt``).
+    log_path: Optional[Path] = None
 
     @property
     def succeeded(self) -> bool:
@@ -310,7 +312,7 @@ class AutoCadRunner:
             duration=duration,
             failure_reason=failure_reason,
         )
-        self._dump_job_output(result, logger)
+        result.log_path = self._dump_job_output(result, logger)
         if not result.succeeded:
             logger.error(
                 "AutoCAD job %s failed (code %s%s)",
@@ -324,7 +326,7 @@ class AutoCadRunner:
             )
         return result
 
-    def _dump_job_output(self, result: AutoCadResult, logger) -> None:
+    def _dump_job_output(self, result: AutoCadResult, logger) -> Optional[Path]:
         """Persist raw console output for post-mortem debugging."""
 
         try:
@@ -337,6 +339,8 @@ class AutoCadRunner:
             dump_path.write_text(body, encoding="utf-8", errors="replace")
         except OSError as exc:  # pragma: no cover - disk issues
             logger.debug("Could not write job output dump: %s", exc)
+            return None
+        return dump_path
 
 
 class AutoCadCoordinator:

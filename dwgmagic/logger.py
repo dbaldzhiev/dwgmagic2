@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import itertools
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -55,6 +55,27 @@ class LoggerFactory:
             self.settings, tuple(existing), _scope=self._scope, _started=self._started
         )
 
+    @property
+    def run_id(self) -> str:
+        """Timestamp shared by this run's log and manifest file names."""
+
+        return f"{self._started:%Y%m%d_%H%M%S}"
+
+    def start_new_run(self) -> None:
+        """Begin a new run in this scope: close the old log, name a new one.
+
+        The GUI keeps one factory per loaded project. Without this every run
+        in a session appended to the log named after the moment the project
+        was opened.
+        """
+
+        self.close()
+        started = datetime.now()
+        if self._started is not None and f"{started:%Y%m%d_%H%M%S}" == self.run_id:
+            # Two runs within the same second must not share a file.
+            started = self._started + timedelta(seconds=1)
+        self._started = started
+
     def _log_directory(self) -> Path:
         log_dir = self.settings.project_root / self.settings.log_dir
         log_dir.mkdir(parents=True, exist_ok=True)
@@ -65,7 +86,7 @@ class LoggerFactory:
             # One log per run, named like the manifests. Rotating by filename
             # avoids the unwinnable fight of trying to move or truncate a file
             # this process already holds open on Windows.
-            log_path = self._log_directory() / f"run_{self._started:%Y%m%d_%H%M%S}.log"
+            log_path = self._log_directory() / f"run_{self.run_id}.log"
             handler = logging.FileHandler(
                 log_path, encoding=self.settings.log_encoding, delay=True
             )

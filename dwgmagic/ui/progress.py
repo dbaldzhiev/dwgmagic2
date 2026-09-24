@@ -85,10 +85,16 @@ class ConsoleProgressListener(PipelineListener, AutoCadProgressListener):
         self.console.log(
             f"{symbol} AutoCAD job {result.name} exited with code {result.returncode}"
         )
-        if result.stdout.strip():
-            self.console.log(f"[dim]{result.stdout.strip()}[/dim]")
-        if result.stderr.strip():
-            self.console.log(f"[red]{result.stderr.strip()}[/red]")
+        if not result.succeeded:
+            # The full console output is in the job dump; the tail is enough
+            # to see why, without burying the run in AutoCAD chatter.
+            if result.failure_reason:
+                self.console.log(f"[red]{result.failure_reason}[/red]")
+            tail = result.output_tail()
+            if tail:
+                self.console.log(f"[dim]{tail}[/dim]")
+            if result.log_path:
+                self.console.log(f"[dim]Full output: {result.log_path}[/dim]")
 
     def on_job_failed(self, job: AutoCadJob, error: Exception) -> None:
         self.console.log(f"[red]AutoCAD job {job.name} failed: {error}")
@@ -158,6 +164,7 @@ class QueueProgressListener(PipelineListener, AutoCadProgressListener):
                     "command": list(result.command),
                     "duration": result.duration,
                     "failure_reason": result.failure_reason,
+                    "log_path": str(result.log_path) if result.log_path else None,
                 },
             )
         )

@@ -16,7 +16,8 @@ from dwgmagic.logger import LoggerFactory
 from dwgmagic.miscutil import Preprocessor, inspect_project
 from dwgmagic.script_generator import ScriptGenerator
 from dwgmagic.settings import Settings
-from dwgmagic.trusted_folder import TrustedFolderChecker
+from dwgmagic.errors import ArchiveError
+from dwgmagic.trusted_folder import PLUGIN_LOADED_MARKER, TrustedFolderChecker
 
 
 def make_context(tmp_path):
@@ -63,7 +64,9 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
         # and is deleted as soon as the run finishes.
         calls["script_path"] = script_path
         calls["body"] = Path(script_path).read_text(encoding=settings.script_encoding)
-        return AutoCadResult(name="trusted", returncode=0, stdout="", stderr="", command=())
+        return AutoCadResult(
+            name="trusted", returncode=0, stdout=PLUGIN_LOADED_MARKER, stderr="", command=()
+        )
 
     checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script))
     stage = TrustedFolderCheckStage(checker, LoggerFactory(settings))
@@ -71,9 +74,50 @@ def test_trusted_folder_check_generates_script_when_missing(tmp_path):
 
     assert result.succeeded is True
     assert "netload" in calls["body"]
+    assert "tectest" in calls["body"]
     assert (tectonica / "tectonica.dll").as_posix() in calls["body"]
     # The check runs three-plus times per run; it must not leave files behind.
     assert not Path(calls["script_path"]).exists()
+
+
+def test_trusted_folder_check_requires_proof_the_plugin_loaded(tmp_path):
+    """No failure marker is not success: the plugin must answer tecTest."""
+
+    context, settings = make_context(tmp_path)
+    tectonica = tmp_path / "tectonica"
+    tectonica.mkdir()
+    (tectonica / "tectonica.dll").write_text("dll")
+    settings.tectonica_path = tectonica
+
+    def run_script(script_path, logger, input_path=None, **kwargs):
+        return AutoCadResult(name="trusted", returncode=0, stdout="Command:", stderr="", command=())
+
+    checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script))
+    result = TrustedFolderCheckStage(checker, LoggerFactory(settings)).run(context)
+
+    assert result.succeeded is False
+    assert "tecTest" in (result.details or "")
+
+
+def test_trusted_folder_check_reuses_an_earlier_pass(tmp_path):
+    context, settings = make_context(tmp_path)
+    tectonica = tmp_path / "tectonica"
+    tectonica.mkdir()
+    (tectonica / "tectonica.dll").write_text("dll")
+    settings.tectonica_path = tectonica
+    calls = []
+
+    def run_script(script_path, logger, input_path=None, **kwargs):
+        calls.append(script_path)
+        return AutoCadResult(
+            name="trusted", returncode=0, stdout=PLUGIN_LOADED_MARKER, stderr="", command=()
+        )
+
+    runner = SimpleNamespace(run_script=run_script)
+    stage = TrustedFolderCheckStage(TrustedFolderChecker(runner), LoggerFactory(settings))
+    assert stage.run(context).succeeded is True
+    assert stage.run(context).succeeded is True
+    assert len(calls) == 1, "a pass for the same DLL is not re-proven by a cold start"
 
 
 def test_trusted_folder_check_fails_without_dll(tmp_path):
@@ -195,6 +239,105 @@ def test_preprocessor_stage_uses_archive_when_present(tmp_path):
 
     with zipfile.ZipFile(archive) as zip_file:
         assert sorted(zip_file.namelist()) == ["archived.dwg"]
+
+
+def _run_preprocess(tmp_path):
+    context, settings = make_context(tmp_path)
+    result = PreprocessorStage(Preprocessor(), LoggerFactory(settings)).run(context)
+    return result, context
+
+
+def test_deliverables_are_never_treated_as_sources(tmp_path):
+    """Regression: with original.zip gone, the MXR/MM outputs were fed back in
+    as sheets and the real originals/ was wiped to make room for them."""
+
+    (tmp_path / "A101.dwg").write_text("sheet")
+    (tmp_path / "A101-View-1.dwg").write_text("view")
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+    (tmp_path / f"{tmp_path.name}_MXR.dwg").write_text("deliverable")
+    (tmp_path / f"{tmp_path.name}_MM.dwg").write_text("deliverable")
+    (tmp_path / "original.zip").unlink()
+
+    result, context = _run_preprocess(tmp_path)
+
+    assert result.succeeded is True
+    assert context.get("dwg_files") == ["A101-View-1.dwg", "A101.dwg"]
+    assert sorted(p.name for p in (tmp_path / "originals").iterdir()) == [
+        "A101-View-1.dwg",
+        "A101.dwg",
+    ]
+
+
+def test_new_export_replaces_the_previous_one_and_keeps_a_backup(tmp_path):
+    """Regression: a re-export into a processed folder was deleted and the
+    previous export (from original.zip) processed instead."""
+
+    (tmp_path / "A101.dwg").write_text("v1")
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+    (tmp_path / f"{tmp_path.name}_MXR.dwg").write_text("previous deliverable")
+    (tmp_path / "A101.dwg").write_text("v2")
+    (tmp_path / "A102.dwg").write_text("v2")
+
+    result, context = _run_preprocess(tmp_path)
+
+    assert result.succeeded is True
+    assert context.get("dwg_files") == ["A101.dwg", "A102.dwg"]
+    assert (tmp_path / "derevitized" / "A101.dwg").read_text() == "v2"
+    assert (tmp_path / "originals" / "A102.dwg").exists()
+    assert not (tmp_path / f"{tmp_path.name}_MXR.dwg").exists(), "stale deliverable removed"
+    with zipfile.ZipFile(tmp_path / "original.zip") as archive:
+        assert sorted(archive.namelist()) == ["A101.dwg", "A102.dwg"]
+    with zipfile.ZipFile(tmp_path / "original.previous.zip") as previous:
+        assert previous.namelist() == ["A101.dwg"]
+        assert previous.read("A101.dwg") == b"v1"
+
+
+def test_new_export_backs_up_originals_when_the_archive_is_gone(tmp_path):
+    (tmp_path / "A101.dwg").write_text("v1")
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+    (tmp_path / "original.zip").unlink()
+    (tmp_path / "A101.dwg").write_text("v2")
+
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+
+    with zipfile.ZipFile(tmp_path / "original.previous.zip") as previous:
+        assert previous.read("A101.dwg") == b"v1"
+
+
+def test_run_history_survives_a_rerun(tmp_path):
+    """Regression: every rerun deleted logs/, including earlier manifests."""
+
+    (tmp_path / "A101.dwg").write_text("dwg")
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+    logs = tmp_path / "logs"
+    (logs / "run_20260101_000000.log").write_text("old run")
+    (logs / "run_20260101_000000.json").write_text("{}")
+    (logs / "jobs").mkdir(exist_ok=True)
+    (logs / "jobs" / "A101_SHEET.out.txt").write_text("stale")
+
+    assert inspect_project(tmp_path).mode == "archive"
+    assert _run_preprocess(tmp_path)[0].succeeded is True
+
+    assert (logs / "run_20260101_000000.log").exists()
+    assert (logs / "run_20260101_000000.json").exists()
+    assert not (logs / "jobs" / "A101_SHEET.out.txt").exists()
+
+
+def test_failed_archive_write_stops_before_touching_the_sources(tmp_path, monkeypatch):
+    """The archive is the only backup once sources leave the root."""
+
+    (tmp_path / "A101.dwg").write_text("dwg")
+
+    def broken(*args, **kwargs):
+        raise ArchiveError("disk full")
+
+    monkeypatch.setattr(Preprocessor, "_write_verified_archive", staticmethod(broken))
+    result, _ = _run_preprocess(tmp_path)
+
+    assert result.succeeded is False
+    assert "disk full" in (result.details or "")
+    assert (tmp_path / "A101.dwg").read_text() == "dwg", "source left where it was"
+    assert not (tmp_path / "originals" / "A101.dwg").exists()
 
 
 def test_inspect_project_modes(tmp_path):
@@ -496,3 +639,47 @@ def test_autocad_stage_continue_on_error(tmp_path):
     ]
     assert result.succeeded is True
     assert result.data["failed_jobs"] == ["sheet:SheetA"]
+
+
+def test_autocad_stage_does_not_accept_last_runs_outputs(tmp_path):
+    """A leftover _xrefed.dwg / deliverable must not pass the output check."""
+
+    context, settings = make_context(tmp_path)
+    _prepare_autocad_project(tmp_path, context)
+    (tmp_path / "derevitized" / "SheetA_xrefed.dwg").write_text("from the last run")
+    (tmp_path / f"{tmp_path.name}_MXR.dwg").write_text("from the last run")
+    (tmp_path / f"{tmp_path.name}_MM.dwg").write_text("from the last run")
+
+    stage = AutoCadStage(FakeCoordinator(produce_outputs=False), LoggerFactory(settings))
+    result = stage.run(context)
+
+    assert result.succeeded is False
+    assert "expected outputs" in (result.details or "")
+    assert not (tmp_path / "derevitized" / "SheetA_xrefed.dwg").exists()
+
+
+def test_continue_on_error_reports_a_failed_job_once(tmp_path):
+    """A failed job is a failure, not also a separate "missing outputs" finding."""
+
+    import logging
+
+    context, settings = make_context(tmp_path)
+    settings.continue_on_error = True
+    _prepare_autocad_project(tmp_path, context)
+
+    records = []
+
+    class ListHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    factory = LoggerFactory(settings).with_handlers(ListHandler())
+    stage = AutoCadStage(FakeCoordinator(failing={"sheet:SheetA"}), factory)
+    try:
+        assert stage.run(context).succeeded is True
+    finally:
+        factory.close()
+
+    sheet_findings = [message for message in records if message.startswith("sheet batch")]
+    assert len(sheet_findings) == 1, sheet_findings
+    assert "had failures" in sheet_findings[0]

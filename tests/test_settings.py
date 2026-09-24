@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from dwgmagic.settings import APP_ROOT, load_settings
+from dwgmagic.settings import APP_ROOT, default_max_workers, load_settings
 
 
 def test_load_settings_precedence(tmp_path):
@@ -70,7 +70,8 @@ def test_execution_tuning_settings(tmp_path):
 
 def test_defaults_are_sane(tmp_path):
     settings = load_settings(tmp_path, env={})
-    assert settings.max_workers == (os.cpu_count() or 4)
+    assert settings.max_workers == default_max_workers()
+    assert 1 <= settings.max_workers <= min(os.cpu_count() or 4, 8)
     assert settings.job_timeout == 1800.0
     assert settings.continue_on_error is False
     assert settings.check_updates is True
@@ -91,3 +92,25 @@ def test_invalid_log_level_rejected(tmp_path):
 def test_invalid_job_timeout_rejected(tmp_path):
     with pytest.raises(ValueError, match="job_timeout"):
         load_settings(tmp_path, env={"DWGMAGIC_JOB_TIMEOUT": "-5"})
+
+
+def test_string_booleans_are_parsed_not_truthy(tmp_path):
+    """bool("false") is True; a quoted YAML/TOML false must stay false."""
+
+    config = tmp_path / "cfg.toml"
+    config.write_text('continue_on_error = "false"\nfix_spot_elevations = "yes"\n')
+    settings = load_settings(tmp_path, config_file=config, env={})
+    assert settings.continue_on_error is False
+    assert settings.fix_spot_elevations is True
+
+
+def test_invalid_boolean_is_rejected(tmp_path):
+    with pytest.raises(ValueError, match="DWGMAGIC_CONTINUE_ON_ERROR"):
+        load_settings(tmp_path, env={"DWGMAGIC_CONTINUE_ON_ERROR": "maybe"})
+
+
+def test_non_numeric_env_values_name_the_variable(tmp_path):
+    with pytest.raises(ValueError, match="DWGMAGIC_MAX_WORKERS"):
+        load_settings(tmp_path, env={"DWGMAGIC_MAX_WORKERS": "lots"})
+    with pytest.raises(ValueError, match="DWGMAGIC_JOB_TIMEOUT"):
+        load_settings(tmp_path, env={"DWGMAGIC_JOB_TIMEOUT": "soon"})

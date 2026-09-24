@@ -7,7 +7,8 @@ The pipeline (trusted-folder validation → preprocessing → script generation 
 - **Pipeline orchestration** — discrete stages with shared context, per-stage timing, and structured results.
 - **Resilient AutoCAD execution** — bounded parallelism, per-job timeouts, live console output streaming, cancellation, and failure detection that catches jobs which "succeed" with a zero exit code but fail in their output.
 - **Output validation** — sheet batches must actually produce their `*_xrefed.dwg` files before the merge is attempted; the final deliverables (`<project>_MXR.dwg`, `<project>_MM.dwg`) are verified and reported with sizes.
-- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects.
+- **Safety guardrails** — preprocessing refuses to touch folders that don't look like DWGMAGIC projects, never mistakes its own deliverables (`<project>_MXR/_MM/_MMM.dwg`) for source drawings, and stops the run if the `original.zip` backup cannot be written and verified.
+- **Re-exports just work** — DWGs exported into an already-processed folder are treated as a new export: they replace the previous sources, which are kept in `original.previous.zip`. The folder context menu's autorun asks before deleting any file DWGMAGIC did not create.
 - **Run tracking** — every run writes a chronological `logs/run_<timestamp>.log`, per-job console dumps under `logs/jobs/`, and a machine-readable manifest `logs/run_<timestamp>.json`.
 - **Auto-update** — the GUI checks GitHub releases on startup and can replace itself in place.
 
@@ -80,7 +81,7 @@ Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py)
 | --- | --- | --- | --- |
 | `autocad_executable` | `DWGMAGIC_AUTOCAD_PATH` | auto-discovered | Explicit `accoreconsole.exe` path. Discovery checks the registry, then `C:\Program Files\Autodesk\AutoCAD 2017–2026`. |
 | `tectonica_path` | `DWGMAGIC_TECTONICA_PATH` | the app folder | Where `tectonica.dll` is NETLOADed from (relocatable). |
-| `max_workers` | `DWGMAGIC_MAX_WORKERS` | CPU count | Simultaneous AutoCAD console processes. |
+| `max_workers` | `DWGMAGIC_MAX_WORKERS` | CPU count, capped at 8 and ~1 per GB of RAM | Simultaneous AutoCAD console processes. The GUI's Options choice overrides it. |
 | `job_timeout` | `DWGMAGIC_JOB_TIMEOUT` | `1800` | Seconds before a hung job is killed. |
 | `continue_on_error` | `DWGMAGIC_CONTINUE_ON_ERROR` | `false` | Keep going when individual jobs fail. |
 | `xref_xplode_toggle` | `DWGMAGIC_XREF_EXPLODE` | `true` | Use the tecbxt bind/explode path. |
@@ -154,9 +155,9 @@ Use `-NoPublish` to build the assets without tagging or publishing, and `-SkipTe
 
 ## Troubleshooting a failed run
 Inside the project folder:
-- `logs/run_<timestamp>.log` — chronological log of one run, all components. Previous runs are kept (most recent 20).
-- `logs/jobs/<script>.out.txt` — raw AutoCAD console output per job.
-- `logs/run_<timestamp>.json` — the run manifest: settings snapshot, stage timings, per-job exit codes/durations/failure reasons, deliverable status.
+- `logs/run_<timestamp>.log` — chronological log of one run, all components. Previous runs (log and manifest) are kept across reruns (most recent 20).
+- `logs/jobs/<script>.out.txt` — raw AutoCAD console output per job (cleared at the start of each run; the manifest records each job's file).
+- `logs/run_<timestamp>.json` — the run manifest (same timestamp as its log): settings snapshot, stage timings, per-job exit codes/durations/failure reasons, deliverable status.
 
 For failures that happen *before* a project is opened, see `%LOCALAPPDATA%\dwgmagic2\logs\crash.log`.
 

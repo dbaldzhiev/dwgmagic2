@@ -12,6 +12,7 @@ import logging
 import os
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -43,6 +44,7 @@ from dwgmagic.core.stages import build_default_stages
 from dwgmagic.integrations.autocad import AutoCadCoordinator, AutoCadRunner
 from dwgmagic.logger import LoggerFactory
 from dwgmagic.manifest import build_summary_lines, write_manifest
+from dwgmagic.miscutil import PREVIOUS_ARCHIVE_NAME, plan_run
 from dwgmagic.settings import Settings, load_settings
 from dwgmagic.ui.progress import ConsoleProgressListener
 
@@ -152,7 +154,11 @@ def _make_settings_loader(args: argparse.Namespace):
 def run_console(args: argparse.Namespace, project_root: Path) -> int:
     """Run the pipeline headless; returns the process exit code."""
 
-    settings = _make_settings_loader(args)(project_root)
+    try:
+        settings = _make_settings_loader(args)(project_root)
+    except (ValueError, FileNotFoundError, RuntimeError) as exc:
+        console.print(f"[red]Configuration error:[/red] {exc}")
+        return 2
     environment = build_environment(settings)
 
     logger_factory = LoggerFactory(settings)
@@ -179,26 +185,82 @@ def run_console(args: argparse.Namespace, project_root: Path) -> int:
     cancel_event = threading.Event()
     context.set(CANCEL_EVENT_KEY, cancel_event)
 
+    _print_plan_warnings(project_root, settings)
+
     pipeline = PipelineRunner.from_iterable(stages)
     try:
-        results = pipeline.run(context, listener=listener)
-    except KeyboardInterrupt:
-        cancel_event.set()
-        console.print("[yellow]Run cancelled by user[/yellow]")
-        logger_factory.close()
-        return 130
+        results, cancelled = _run_cancellable(pipeline, context, listener, cancel_event)
     finally:
         logger_factory.close()
 
-    write_manifest(context, results)
+    write_manifest(context, results, run_id=logger_factory.run_id)
 
     console.print()
     console.rule("[bold]Run summary")
     for line in build_summary_lines(context, results):
         console.print(line)
 
+    if cancelled:
+        console.print("[yellow]Run cancelled by user[/yellow]")
+        return 130
     succeeded = bool(results) and all(result.succeeded for result in results)
     return 0 if succeeded else 1
+
+
+def _print_plan_warnings(project_root: Path, settings: Settings) -> None:
+    """Say what the run is about to delete; the CLI has no plan panel."""
+
+    plan = plan_run(project_root, settings.log_dir)
+    if plan.replaces_previous:
+        console.print(
+            "[yellow]New export detected:[/yellow] it replaces the previous sources, "
+            f"which are kept in {PREVIOUS_ARCHIVE_NAME}."
+        )
+    if plan.unexpected_deletes:
+        names = ", ".join(path.name for path in plan.unexpected_deletes)
+        console.print(f"[yellow]This run removes files DWGMAGIC did not create:[/yellow] {names}")
+
+
+def _run_cancellable(pipeline, context, listener, cancel_event):
+    """Run the pipeline on a worker thread so Ctrl+C can actually cancel it.
+
+    On the main thread, KeyboardInterrupt is raised inside the job pool's
+    wait; the pool's ``__exit__`` then ran every queued job to completion
+    before the cancel flag was ever set. Here Ctrl+C sets the flag, the runner
+    kills the AutoCAD process trees and skips queued jobs, and the partial
+    results still reach the manifest. Returns ``(results, cancelled)``.
+    """
+
+    outcome: dict = {}
+    done = threading.Event()
+
+    def _work() -> None:
+        try:
+            outcome["results"] = pipeline.run(context, listener=listener)
+        except BaseException as exc:  # noqa: BLE001 - re-raised on the main thread
+            outcome["error"] = exc
+        finally:
+            done.set()
+
+    worker = threading.Thread(target=_work, name="dwgmagic-pipeline", daemon=True)
+    worker.start()
+    cancelled = False
+    # Poll with sleep rather than Thread.join: a KeyboardInterrupt landing
+    # inside join() can leave the thread looking finished while it still runs.
+    while not done.is_set():
+        try:
+            time.sleep(0.1)
+        except KeyboardInterrupt:
+            if not cancelled:
+                cancelled = True
+                cancel_event.set()
+                console.print(
+                    "[yellow]Cancelling — stopping AutoCAD jobs and waiting "
+                    "for them to exit…[/yellow]"
+                )
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("results", []), cancelled
 
 
 def run(argv: Optional[list[str]] = None) -> int:

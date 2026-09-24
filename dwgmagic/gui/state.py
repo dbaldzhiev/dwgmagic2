@@ -21,7 +21,7 @@ class GuiState:
     geometry: str = "1400x900"
     appearance: str = "System"
     recent_projects: List[str] = field(default_factory=list)
-    #: None means "use all CPUs" (the default); an int is an explicit choice.
+    #: None means "use the configured default"; an int is an explicit choice.
     max_workers: int | None = None
 
     def remember_project(self, project: Path) -> None:
