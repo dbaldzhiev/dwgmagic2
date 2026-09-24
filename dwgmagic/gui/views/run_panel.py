@@ -1,7 +1,7 @@
 """Zone B — the run plan before the click, the live header during the run.
 
 Pressing Run is destructive: on a rerun it removes everything in the project
-root that is not ``originals/``, ``original.zip`` or a config file. That was
+root that is not ``originals/``, the archives, ``logs/`` or a config file. That was
 previously a zero-information trigger — the confirmation dialog that stood in
 for it was removed, and the data was only ever logged *after* the run started.
 Here it is on screen, before the click.
@@ -123,7 +123,10 @@ class RunPanel(ctk.CTkFrame):
     def show_plan(self, plan: RunPlan) -> None:
         """Render what a run would produce and destroy."""
 
-        self.phase_label.configure(text=_MODE_LABELS.get(plan.mode, plan.mode))
+        label = _MODE_LABELS.get(plan.mode, plan.mode)
+        if plan.mode == "fresh" and plan.replaces_previous:
+            label = "New export — replaces the previous sources (kept in original.previous.zip)"
+        self.phase_label.configure(text=label)
         if not plan.dwg_count:
             self.timing_label.configure(text="")
         else:

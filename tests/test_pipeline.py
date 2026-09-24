@@ -76,3 +76,31 @@ def test_pipeline_notifies_listener(tmp_path):
     assert ("completed", "beta", True) in events
     pipeline_events = [event for event in events if event[0] == "pipeline"]
     assert pipeline_events and pipeline_events[0][1] == ["alpha", "beta"]
+
+
+def test_cli_ctrl_c_cancels_instead_of_draining_the_queue():
+    """Regression: Ctrl+C waited for every queued AutoCAD job to finish."""
+
+    import _thread
+    import threading
+    import time
+
+    from dwgmagic.cli import _run_cancellable
+
+    cancel_event = threading.Event()
+    observed = {}
+
+    class SlowPipeline:
+        def run(self, context, listener=None):
+            # Stands in for the job pool: it only stops when cancelled.
+            observed["cancelled"] = cancel_event.wait(timeout=10)
+            return ["partial result"]
+
+    threading.Timer(0.3, _thread.interrupt_main).start()
+    started = time.monotonic()
+    results, cancelled = _run_cancellable(SlowPipeline(), None, None, cancel_event)
+
+    assert cancelled is True
+    assert observed["cancelled"] is True, "the cancel flag reached the running pipeline"
+    assert results == ["partial result"], "partial results still reach the manifest"
+    assert time.monotonic() - started < 5

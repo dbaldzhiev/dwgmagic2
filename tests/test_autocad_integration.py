@@ -123,6 +123,7 @@ def test_runner_builds_command_with_input(tmp_path, monkeypatch):
     # Raw console output is dumped for post-mortem debugging.
     dump = tmp_path / "logs" / "jobs" / "script.out.txt"
     assert dump.exists()
+    assert result.log_path == dump, "the result says where its output went"
     assert "console line" in dump.read_text(encoding="utf-8")
 
 

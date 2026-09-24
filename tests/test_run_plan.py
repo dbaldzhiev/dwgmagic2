@@ -34,11 +34,10 @@ def test_fresh_project_with_nothing_generated_deletes_nothing(tmp_path):
 
 
 def test_rerun_reports_everything_it_wipes(tmp_path):
-    """A rerun means originals/ with no DWGs left at the root.
+    """A rerun means originals/ with no source DWGs left at the root.
 
-    Any .dwg at the top level — including a previous run's deliverables —
-    makes ``inspect_project`` classify the folder as ``fresh`` instead, so a
-    rerun folder cannot contain them by definition.
+    Any source .dwg at the top level makes ``inspect_project`` classify the
+    folder as ``fresh`` instead; a previous run's deliverables do not count.
     """
 
     originals = tmp_path / "originals"
@@ -94,8 +93,9 @@ def test_archive_mode_preserves_the_archive_itself(tmp_path):
     with zipfile.ZipFile(tmp_path / "original.zip", "w") as archive:
         archive.writestr("A101.dwg", "dwg")
     (tmp_path / "originals").mkdir()
-    (tmp_path / "stale.dwg").write_text("superseded")
+    (tmp_path / "stale.txt").write_text("superseded")
     (tmp_path / "settings.yaml").write_text("config")
+    (tmp_path / "logs").mkdir()
 
     plan = plan_run(tmp_path)
 
@@ -103,9 +103,53 @@ def test_archive_mode_preserves_the_archive_itself(tmp_path):
     deleted = {path.name for path in plan.deletes}
     assert "original.zip" not in deleted, "the archive is the source of truth"
     assert "settings.yaml" not in deleted
+    assert "logs" not in deleted, "run history is kept"
     # originals/ is superseded by the archive and does get removed.
     assert "originals" in deleted
-    assert "stale.dwg" in deleted
+    assert "stale.txt" in deleted
+    # ...and a user file is flagged, generated artifacts are not.
+    assert [path.name for path in plan.unexpected_deletes] == ["stale.txt"]
+
+
+def test_new_export_over_a_processed_project_replaces_the_archive(tmp_path):
+    """Re-exporting from Revit into the same folder must run the new export.
+
+    The archive used to win, so the new DWGs were deleted and the previous
+    export was processed again.
+    """
+
+    import zipfile
+
+    with zipfile.ZipFile(tmp_path / "original.zip", "w") as archive:
+        archive.writestr("A101.dwg", "old")
+    (tmp_path / "originals").mkdir()
+    (tmp_path / "originals" / "A101.dwg").write_text("old")
+    (tmp_path / f"{tmp_path.name}_MXR.dwg").write_text("previous deliverable")
+    (tmp_path / "A101.dwg").write_text("new")
+
+    plan = plan_run(tmp_path)
+
+    assert plan.mode == "fresh"
+    assert plan.replaces_previous is True
+    assert plan.dwg_count == 1, "the deliverable is not a source"
+    deleted = {path.name for path in plan.deletes}
+    assert "A101.dwg" not in deleted
+    assert f"{tmp_path.name}_MXR.dwg" in deleted
+    assert "originals" in deleted
+    assert tmp_path / "original.previous.zip" in plan.produces
+    assert plan.unexpected_deletes == []
+
+
+def test_deliverables_alone_are_not_a_fresh_export(tmp_path):
+    (tmp_path / "originals").mkdir()
+    (tmp_path / "originals" / "A101.dwg").write_text("dwg")
+    (tmp_path / f"{tmp_path.name}_MXR.dwg").write_text("deliverable")
+    (tmp_path / f"{tmp_path.name}_MM.dwg").write_text("deliverable")
+
+    plan = plan_run(tmp_path)
+
+    assert plan.mode == "rerun"
+    assert plan.dwg_count == 1
 
 
 def test_non_project_yields_an_empty_plan(tmp_path):

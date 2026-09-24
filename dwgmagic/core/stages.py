@@ -165,6 +165,7 @@ class AutoCadStage(PipelineStage):
                 if not batch:
                     return []
                 _check_cancelled()
+                self._clear_expected_outputs(batch)
                 logger.info("Running %s batch (%d job(s))", label, len(batch))
                 batch_results = list(
                     self.coordinator.execute(
@@ -190,7 +191,12 @@ class AutoCadStage(PipelineStage):
                             ),
                         )
 
-                missing = self._missing_outputs(batch)
+                # Failed jobs were reported above; only a job that claims
+                # success yet produced nothing is a new finding.
+                failed_names = {r.name for r in failed}
+                missing = self._missing_outputs(
+                    [job for job in batch if job.name not in failed_names]
+                )
                 if missing:
                     missing_list = ", ".join(str(path) for path in missing)
                     if continue_on_error:
@@ -238,6 +244,20 @@ class AutoCadStage(PipelineStage):
             reason = result.failure_reason or f"exit code {result.returncode}"
             parts.append(f"{result.name} ({reason})")
         return ", ".join(parts)
+
+    @staticmethod
+    def _clear_expected_outputs(batch: Sequence[AutoCadJob]) -> None:
+        """Remove last run's outputs so only this run can satisfy the check."""
+
+        for job in batch:
+            for output in job.expected_outputs:
+                try:
+                    output.unlink(missing_ok=True)
+                except OSError as exc:
+                    raise DwgmagicError(
+                        f"Could not remove the previous {output.name}: {exc}",
+                        hint="Close the drawing in AutoCAD (or any viewer) and retry.",
+                    ) from exc
 
     @staticmethod
     def _missing_outputs(batch: Sequence[AutoCadJob]) -> List[Path]:

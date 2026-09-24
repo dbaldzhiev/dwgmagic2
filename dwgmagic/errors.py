@@ -58,6 +58,10 @@ class NotAProjectError(DwgmagicError):
     """
 
 
+class ArchiveError(DwgmagicError):
+    """The source backup (original.zip) could not be written or rotated safely."""
+
+
 class ScriptGenerationError(DwgmagicError):
     """Raised when AutoCAD script generation fails."""
 
@@ -108,6 +112,7 @@ __all__ = [
     "AutoCadNotFoundError",
     "TrustedFolderError",
     "NotAProjectError",
+    "ArchiveError",
     "ScriptGenerationError",
     "JobFailedError",
     "JobTimeoutError",

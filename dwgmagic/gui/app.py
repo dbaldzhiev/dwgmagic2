@@ -46,8 +46,12 @@ from dwgmagic.integrations.autocad import AutoCadCoordinator, AutoCadRunner
 from dwgmagic.logger import LoggerFactory
 from dwgmagic.manifest import build_manifest, build_summary_lines, write_manifest
 from dwgmagic.miscutil import inspect_project, plan_run
-from dwgmagic.settings import APP_ROOT, Settings
-from dwgmagic.trusted_folder import TrustedFolderChecker, add_trusted_path
+from dwgmagic.settings import APP_ROOT, Settings, default_max_workers
+from dwgmagic.trusted_folder import (
+    TrustedFolderChecker,
+    add_trusted_path,
+    clear_verified_cache,
+)
 from dwgmagic.ui.progress import ProgressEvent, QueueProgressListener
 from dwgmagic.update import check_for_update, launch_updater
 
@@ -159,6 +163,8 @@ class GuiApplication(_RootWindow):
         self._job_total = 0
         self._job_completed = 0
         self._job_total_is_final = False
+        #: Console dump of each job this run, as reported by the runner.
+        self._job_logs: dict[str, Path] = {}
 
         # Preflight
         self._preflight_cache: dict[tuple, dict] = {}
@@ -400,14 +406,41 @@ class GuiApplication(_RootWindow):
         if self._autorun_pending:
             self._autorun_pending = False
             self._append_log("Autorun requested — starting pipeline")
-            self.after(700, self._start_pipeline)
+            self.after(700, self._start_autorun)
+
+    def _start_autorun(self) -> None:
+        """Start an unattended run, unless it would delete the user's own files.
+
+        Autorun comes from the folder context menu, so nobody has looked at the
+        plan panel yet. Regenerated artifacts are fine to replace; anything
+        else needs an explicit yes.
+        """
+
+        if self.project_root is None:
+            return
+        log_dir = self.current_settings.log_dir if self.current_settings else Path("logs")
+        unexpected = plan_run(self.project_root, log_dir).unexpected_deletes
+        if unexpected:
+            shown = "\n".join(f"  • {path.name}" for path in unexpected[:10])
+            if len(unexpected) > 10:
+                shown += f"\n  …and {len(unexpected) - 10} more"
+            if not messagebox.askyesno(
+                "Confirm run",
+                "This run will delete files DWGMAGIC did not create:\n\n"
+                f"{shown}\n\nRun anyway?",
+                icon="warning",
+            ):
+                self._append_log("Autorun cancelled: the run would delete user files", level="warning")
+                return
+        self._start_pipeline()
 
     def _refresh_plan(self) -> None:
         """Show what a run would create and destroy, before the click."""
 
         if self.project_root is None:
             return
-        plan = plan_run(self.project_root)
+        log_dir = self.current_settings.log_dir if self.current_settings else Path("logs")
+        plan = plan_run(self.project_root, log_dir)
         inspection = inspect_project(self.project_root)
         classified = classify_dwg_files(inspection.dwg_names)
         orphans = [
@@ -471,6 +504,7 @@ class GuiApplication(_RootWindow):
 
     def _recheck_preflight(self) -> None:
         self._preflight_cache.clear()
+        clear_verified_cache()
         settings = self.current_settings
         if settings is None:
             self._run_startup_checks()
@@ -578,6 +612,7 @@ class GuiApplication(_RootWindow):
         self._job_total = 0
         self._job_completed = 0
         self._job_total_is_final = False
+        self._job_logs = {}
         self._run_started = time.monotonic()
 
         self.result_panel.grid_forget()
@@ -587,10 +622,12 @@ class GuiApplication(_RootWindow):
         self.project_bar.open_button.configure(state="disabled")
         self.tabview.set("Work")
 
-        workers = self.gui_state.max_workers or self.cpu_count
-        workers = max(1, min(workers, self.cpu_count))
+        workers = self._effective_workers()
         if self.coordinator is not None:
             self.coordinator.max_workers = workers
+        if self.logger_factory is not None:
+            # A fresh run_<timestamp>.log per run, not one per project load.
+            self.logger_factory.start_new_run()
         self._append_log(f"Starting pipeline run ({workers} parallel AutoCAD job(s))…")
 
         self._cancel_event = threading.Event()
@@ -601,6 +638,19 @@ class GuiApplication(_RootWindow):
         self._pipeline_thread = threading.Thread(target=self._run_pipeline_thread, daemon=True)
         self._pipeline_thread.start()
         self.after(1000, self._tick)
+
+    def _default_workers(self) -> int:
+        """Configured parallelism (config/env), else the machine default."""
+
+        if self.current_settings is not None:
+            return self.current_settings.max_workers
+        return default_max_workers()
+
+    def _effective_workers(self) -> int:
+        """The GUI's saved choice wins; otherwise the configured value."""
+
+        workers = self.gui_state.max_workers or self._default_workers()
+        return max(1, min(workers, self.cpu_count))
 
     def _new_context(self) -> ProjectContext:
         if not self.current_settings or not self.environment:
@@ -628,7 +678,8 @@ class GuiApplication(_RootWindow):
             manifest = None
             if results is not None:
                 try:
-                    manifest_path = write_manifest(self.context, results)
+                    run_id = self.logger_factory.run_id if self.logger_factory else None
+                    manifest_path = write_manifest(self.context, results, run_id=run_id)
                     manifest = build_manifest(self.context, results)
                 except Exception:  # noqa: BLE001 - a bad summary must not mask the run
                     manifest = None
@@ -738,6 +789,8 @@ class GuiApplication(_RootWindow):
             name = payload["name"]
             succeeded = bool(payload.get("succeeded"))
             duration = payload.get("duration")
+            if payload.get("log_path"):
+                self._job_logs[name] = Path(str(payload["log_path"]))
             self.work_view.set_job_status(
                 name,
                 "completed" if succeeded else "failed",
@@ -819,6 +872,15 @@ class GuiApplication(_RootWindow):
         self.project_bar.open_button.configure(state="normal")
         self.work_view.mark_remaining_skipped()
 
+        if not self._shutting_down:
+            # The run changed the folder (a first run turns it into an archive
+            # project); the plan panel must describe the *next* click. Done
+            # before the outcome is written so the phase line keeps the result.
+            try:
+                self._refresh_plan()
+            except Exception as exc:  # noqa: BLE001 - a stale panel must not mask the result
+                self._append_log(f"Could not refresh the run plan: {exc}", level="warning")
+
         elapsed = time.monotonic() - self._run_started if self._run_started else None
         manifest = payload.get("manifest")
         if isinstance(manifest, dict):
@@ -865,6 +927,9 @@ class GuiApplication(_RootWindow):
         return self.current_settings.project_root / self.current_settings.log_dir
 
     def _job_log_path(self, job_name: str) -> Optional[Path]:
+        reported = self._job_logs.get(job_name)
+        if reported is not None and reported.exists():
+            return reported
         logs = self._logs_dir()
         if logs is None:
             return None
@@ -929,12 +994,12 @@ class GuiApplication(_RootWindow):
         menu = ctk.CTkOptionMenu(
             window, values=[str(i) for i in range(1, self.cpu_count + 1)], width=100
         )
-        chosen = self.gui_state.max_workers or self.cpu_count
-        menu.set(str(max(1, min(chosen, self.cpu_count))))
+        default_workers = max(1, min(self._default_workers(), self.cpu_count))
+        menu.set(str(self._effective_workers()))
         menu.pack(anchor="w", padx=16)
         ctk.CTkLabel(
             window,
-            text=f"{self.cpu_count} CPUs available",
+            text=f"{self.cpu_count} CPUs available · default {default_workers}",
             font=ctk.CTkFont(size=10),
             text_color=theme.color("text.muted"),
         ).pack(anchor="w", padx=16, pady=(2, 12))
@@ -943,8 +1008,9 @@ class GuiApplication(_RootWindow):
             try:
                 workers = max(1, min(int(menu.get()), self.cpu_count))
             except ValueError:
-                workers = self.cpu_count
-            self.gui_state.max_workers = None if workers == self.cpu_count else workers
+                workers = default_workers
+            # None keeps following the configured/machine default.
+            self.gui_state.max_workers = None if workers == default_workers else workers
             self.gui_state.save()
             window.destroy()
 

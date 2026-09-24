@@ -40,6 +40,91 @@ DEFAULT_AUTOCAD_CANDIDATES = tuple(
 
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
 
+#: Upper bound on the default parallelism. Each accoreconsole takes several
+#: hundred MB and competes for disk; one per CPU on a 32-thread workstation
+#: is slower overall, not faster.
+_MAX_DEFAULT_WORKERS = 8
+#: Physical memory budgeted per accoreconsole when sizing the default.
+_MEMORY_PER_WORKER = 1024**3
+
+
+def _total_memory_bytes() -> Optional[int]:
+    """Physical memory, or None when it cannot be determined."""
+
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            class _MemoryStatus(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("sullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+
+            status = _MemoryStatus()
+            status.dwLength = ctypes.sizeof(_MemoryStatus)
+            if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+                return int(status.ullTotalPhys)
+        except Exception:  # noqa: BLE001 - sizing is best-effort
+            return None
+        return None
+    try:
+        return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    except (AttributeError, ValueError, OSError):
+        return None
+
+
+def default_max_workers() -> int:
+    """Parallel AutoCAD jobs when nothing is configured.
+
+    The CPU count, capped at :data:`_MAX_DEFAULT_WORKERS` and at roughly one
+    job per GB of physical memory.
+    """
+
+    workers = min(os.cpu_count() or 4, _MAX_DEFAULT_WORKERS)
+    memory = _total_memory_bytes()
+    if memory:
+        workers = min(workers, memory // _MEMORY_PER_WORKER)
+    return max(1, int(workers))
+
+
+_TRUE_STRINGS = {"1", "true", "yes", "on"}
+_FALSE_STRINGS = {"0", "false", "no", "off", ""}
+
+
+def _as_bool(value: object, name: str) -> bool:
+    """Interpret a config/env value as a boolean.
+
+    ``bool("false")`` is True, so a YAML ``continue_on_error: "false"`` used
+    to switch the option on.
+    """
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in _TRUE_STRINGS:
+        return True
+    if text in _FALSE_STRINGS:
+        return False
+    raise ValueError(f"Invalid value for {name}: {value!r} (expected true/false)")
+
+
+def _as_number(value: object, name: str, kind: type) -> float | int:
+    try:
+        return kind(value)
+    except (TypeError, ValueError):
+        expected = "a whole number" if kind is int else "a number"
+        raise ValueError(f"Invalid value for {name}: {value!r} (expected {expected})") from None
+
 GITHUB_REPO = "dbaldzhiev/dwgmagic2"
 
 
@@ -58,9 +143,9 @@ class Settings:
     xref_xplode_toggle: bool = True
     #: Run FixSpotElevations.lsp (MCPFIXSPOT) on each sheet before merge.
     fix_spot_elevations: bool = False
-    #: Maximum simultaneous accoreconsole processes. Defaults to the CPU
-    #: count; reduce it explicitly (config/env/GUI) if the machine struggles.
-    max_workers: int = field(default_factory=lambda: os.cpu_count() or 4)
+    #: Maximum simultaneous accoreconsole processes. Defaults to
+    #: :func:`default_max_workers`; set it explicitly (config/env/GUI) to override.
+    max_workers: int = field(default_factory=default_max_workers)
     #: Per-job timeout in seconds; a hung console job is killed after this.
     job_timeout: float = 1800.0
     #: Encoding used when writing generated .scr/.bat files.
@@ -150,7 +235,7 @@ def load_settings(
         value = env.get(f"DWGMAGIC_{name}")
         if value is None:
             return None
-        return value.lower() in {"1", "true", "yes", "on"}
+        return _as_bool(value, f"DWGMAGIC_{name}")
 
     # Environment overrides
     env_template = env.get("DWGMAGIC_TEMPLATE_ROOT")
@@ -199,11 +284,11 @@ def load_settings(
 
     env_max_workers = env.get("DWGMAGIC_MAX_WORKERS")
     if env_max_workers:
-        data["max_workers"] = int(env_max_workers)
+        data["max_workers"] = _as_number(env_max_workers, "DWGMAGIC_MAX_WORKERS", int)
 
     env_job_timeout = env.get("DWGMAGIC_JOB_TIMEOUT")
     if env_job_timeout:
-        data["job_timeout"] = float(env_job_timeout)
+        data["job_timeout"] = _as_number(env_job_timeout, "DWGMAGIC_JOB_TIMEOUT", float)
 
     # CLI overrides
     if template_roots:
@@ -211,8 +296,10 @@ def load_settings(
     if autocad_path:
         data["autocad_executable"] = autocad_path
 
-    max_workers = max(1, int(data.get("max_workers", os.cpu_count() or 4)))
-    job_timeout = float(data.get("job_timeout", 1800.0))
+    max_workers = max(
+        1, int(_as_number(data.get("max_workers", default_max_workers()), "max_workers", int))
+    )
+    job_timeout = float(_as_number(data.get("job_timeout", 1800.0), "job_timeout", float))
     if job_timeout <= 0:
         raise ValueError("job_timeout must be a positive number of seconds")
 
@@ -223,17 +310,17 @@ def load_settings(
         trusted_folder_script=Path(data.get("trusted_folder_script", "trustedFolderCheck.scr")),
         autocad_executable=Path(data["autocad_executable"]) if data.get("autocad_executable") else None,
         autocad_candidates=tuple(Path(path) for path in data.get("autocad_candidates", DEFAULT_AUTOCAD_CANDIDATES)),
-        verbose=bool(data.get("verbose", verbose)),
+        verbose=_as_bool(data.get("verbose", verbose), "verbose"),
         log_dir=Path(data.get("log_dir", "logs")),
         log_encoding=str(data.get("log_encoding", "utf-8")),
         log_level=_validated_log_level(data.get("log_level", "DEBUG")),
-        xref_xplode_toggle=bool(data.get("xref_xplode_toggle", True)),
-        fix_spot_elevations=bool(data.get("fix_spot_elevations", False)),
+        xref_xplode_toggle=_as_bool(data.get("xref_xplode_toggle", True), "xref_xplode_toggle"),
+        fix_spot_elevations=_as_bool(data.get("fix_spot_elevations", False), "fix_spot_elevations"),
         max_workers=max_workers,
         job_timeout=job_timeout,
         script_encoding=str(data.get("script_encoding", "cp1251")),
-        continue_on_error=bool(data.get("continue_on_error", False)),
-        check_updates=bool(data.get("check_updates", True)),
+        continue_on_error=_as_bool(data.get("continue_on_error", False), "continue_on_error"),
+        check_updates=_as_bool(data.get("check_updates", True), "check_updates"),
     )
 
     if verbose:
@@ -244,6 +331,7 @@ def load_settings(
 
 __all__ = [
     "Settings",
+    "default_max_workers",
     "load_settings",
     "DEFAULT_AUTOCAD_CANDIDATES",
     "APP_ROOT",
