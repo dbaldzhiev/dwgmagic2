@@ -88,9 +88,16 @@ class ResultPanel(ctk.CTkFrame):
             )
         elif succeeded:
             duration = f" in {int(elapsed) // 60}:{int(elapsed) % 60:02d}" if elapsed else ""
-            self.headline.configure(
-                text=f"✓  Run completed{duration}", text_color=theme.color("success")
-            )
+            if failed_jobs:
+                # continue_on_error: the run finished, but not every job did.
+                self.headline.configure(
+                    text=f"⚠  Run completed{duration} — {len(failed_jobs)} of {len(jobs)} jobs failed",
+                    text_color=theme.color("warning"),
+                )
+            else:
+                self.headline.configure(
+                    text=f"✓  Run completed{duration}", text_color=theme.color("success")
+                )
         else:
             if failed_jobs:
                 text = f"✗  {len(failed_jobs)} of {len(jobs)} jobs failed"

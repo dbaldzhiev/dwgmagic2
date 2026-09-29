@@ -33,14 +33,24 @@ def test_apply_update_launches_updater_with_package_url(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "dwgmagic.gui.app.launch_updater",
-        lambda package_url, *, relaunch_gui=True: calls.append((package_url, relaunch_gui)) or True,
+        lambda package_url, *, relaunch_gui=True, version=None, sha256=None: calls.append(
+            (package_url, relaunch_gui, version, sha256)
+        )
+        or True,
     )
     monkeypatch.setattr("dwgmagic.gui.app.messagebox.showinfo", lambda *a, **k: None)
 
-    app = _FakeAppForApply({"package_url": "https://example.test/bundle.zip", "url": "https://example.test/rel"})
+    app = _FakeAppForApply(
+        {
+            "package_url": "https://example.test/bundle.zip",
+            "package_sha256": "ab" * 32,
+            "latest": "9.9.9",
+            "url": "https://example.test/rel",
+        }
+    )
     app._apply_update()
 
-    assert calls == [("https://example.test/bundle.zip", True)]
+    assert calls == [("https://example.test/bundle.zip", True, "9.9.9", "ab" * 32)]
     assert app.closed is True
 
 

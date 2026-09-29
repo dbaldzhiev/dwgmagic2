@@ -33,9 +33,12 @@ def _app_root() -> Path:
 #: so the app is relocatable instead of assuming a fixed install path.
 APP_ROOT = _app_root()
 
+#: Newest first: tectonica.dll targets .NET 8 (AutoCAD 2025+), so when several
+#: releases are installed the newest one is the one that can load it. A few
+#: future years are listed so a new AutoCAD release is found without an update.
 DEFAULT_AUTOCAD_CANDIDATES = tuple(
     Path(f"C:/Program Files/Autodesk/AutoCAD {year}/accoreconsole.exe")
-    for year in range(2017, 2027)
+    for year in range(2030, 2016, -1)
 )
 
 _VALID_LOG_LEVELS = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}

@@ -362,6 +362,22 @@ class Preprocessor:
     def _restore_from_archive(self, root: Path, log_dir: Path, logger) -> None:
         archive = root / ARCHIVE_NAME
         logger.info("Restoring project from archive %s", archive)
+        # Everything below — originals/ included — is deleted before extraction,
+        # so a damaged archive must stop the run while originals/ still exists.
+        # inspect_project only read the central directory, not the data.
+        try:
+            with zipfile.ZipFile(archive, "r") as zip_file:
+                bad = zip_file.testzip()
+        except (OSError, zipfile.BadZipFile) as exc:
+            raise ArchiveError(
+                f"{ARCHIVE_NAME} cannot be read: {exc}",
+                hint="Nothing was changed. Restore the archive, or delete it to rerun from originals/.",
+            ) from exc
+        if bad is not None:
+            raise ArchiveError(
+                f"{ARCHIVE_NAME} is corrupt ({bad})",
+                hint="Nothing was changed. Restore the archive, or delete it to rerun from originals/.",
+            )
         for entry in root.iterdir():
             if entry.name in {ARCHIVE_NAME, PREVIOUS_ARCHIVE_NAME}:
                 continue

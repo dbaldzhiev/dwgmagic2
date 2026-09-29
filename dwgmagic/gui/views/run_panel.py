@@ -40,6 +40,8 @@ class RunPanel(ctk.CTkFrame):
         self._durations: list[float] = []
         self._total_jobs = 0
         self._done_jobs = 0
+        self._workers = 1
+        self._detail = ""
 
         self.grid_columnconfigure(0, weight=1)
 
@@ -160,11 +162,13 @@ class RunPanel(ctk.CTkFrame):
             self.deletes_label.configure(text="")
 
     # -- running state ----------------------------------------------------
-    def begin_run(self) -> None:
+    def begin_run(self, workers: int = 1) -> None:
         self._started = time.monotonic()
         self._durations = []
         self._total_jobs = 0
         self._done_jobs = 0
+        self._workers = max(1, workers)
+        self._detail = ""
         self.run_button.pack_forget()
         self.cancel_button.configure(state="normal", text="■  Cancel")
         self.cancel_button.pack(side="left")
@@ -201,12 +205,15 @@ class RunPanel(ctk.CTkFrame):
 
     def set_progress(self, fraction: float, detail: str = "") -> None:
         self.progress.set(max(0.0, min(1.0, fraction)))
-        self._refresh_timing(detail)
+        # Kept so the once-a-second tick does not wipe the job counter.
+        self._detail = detail
+        self._refresh_timing()
 
     def tick(self) -> None:
         self._refresh_timing()
 
-    def _refresh_timing(self, detail: str = "") -> None:
+    def _refresh_timing(self) -> None:
+        detail = self._detail
         parts = []
         if self._started is not None:
             elapsed = int(time.monotonic() - self._started)
@@ -223,7 +230,9 @@ class RunPanel(ctk.CTkFrame):
         """Mean completed-job duration projected over what is left.
 
         Only meaningful once the total is fixed and some jobs have finished,
-        which is exactly what the up-front job plan provides.
+        which is exactly what the up-front job plan provides. Jobs run
+        ``workers`` at a time, so what is left takes that many fewer rounds;
+        ignoring it overstated the ETA by the parallelism factor.
         """
 
         if not self._durations or self._total_jobs <= 0:
@@ -232,7 +241,8 @@ class RunPanel(ctk.CTkFrame):
         if remaining <= 0:
             return None
         mean = sum(self._durations) / len(self._durations)
-        return mean * remaining
+        rounds = -(-remaining // self._workers)  # ceil
+        return mean * rounds
 
 
 __all__ = ["RunPanel"]

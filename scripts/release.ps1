@@ -166,8 +166,14 @@ try {
     }
 
     Invoke-Step "GitHub release" {
-        if (-not (git tag --list $Tag)) { git tag -a $Tag -m "DWGMAGIC $Tag" }
+        if (-not (git tag --list $Tag)) {
+            git tag -a $Tag -m "DWGMAGIC $Tag"
+            if ($LASTEXITCODE -ne 0) { throw "git tag failed" }
+        }
+        # $ErrorActionPreference does not cover native commands: an unchecked
+        # push failure went on to create a release for a tag GitHub never got.
         git push origin $Tag
+        if ($LASTEXITCODE -ne 0) { throw "git push origin $Tag failed" }
 
         # Creating the release and uploading each asset are retried separately:
         # a partial failure during a GitHub incident otherwise leaves the tag

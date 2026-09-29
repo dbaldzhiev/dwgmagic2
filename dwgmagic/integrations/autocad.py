@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import threading
 import time
@@ -59,15 +60,27 @@ def terminate_process_tree(process: subprocess.Popen) -> None:
         pass
 
 
+def _release_sort_key(release: str) -> Tuple[int, ...]:
+    """Order registry release keys (``R25.0``, ``R24.3``) numerically."""
+
+    parts = re.findall(r"\d+", release)
+    return tuple(int(part) for part in parts) if parts else (-1,)
+
+
 def registry_autocad_candidates() -> Tuple[Path, ...]:
-    """Discover accoreconsole.exe locations from the AutoCAD registry keys."""
+    """Discover accoreconsole.exe locations from the AutoCAD registry keys.
+
+    Newest release first. Registry enumeration order is alphabetical, i.e.
+    oldest first, which made a machine with AutoCAD 2020 and 2025 pick 2020 —
+    a release that cannot load the .NET 8 tectonica.dll at all.
+    """
 
     try:
         import winreg
     except ImportError:  # pragma: no cover - non-Windows
         return ()
 
-    candidates: List[Path] = []
+    found: List[Tuple[Tuple[int, ...], Path]] = []
     for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
             root = winreg.OpenKey(hive, r"SOFTWARE\Autodesk\AutoCAD")
@@ -98,10 +111,15 @@ def registry_autocad_candidates() -> Tuple[Path, ...]:
                                 except OSError:
                                     continue
                             exe = Path(location) / "accoreconsole.exe"
-                            if exe not in candidates:
-                                candidates.append(exe)
+                            found.append((_release_sort_key(release), exe))
             except OSError:  # pragma: no cover - registry quirks
                 pass
+
+    candidates: List[Path] = []
+    # Stable sort: within one release, HKLM stays ahead of HKCU.
+    for _key, exe in sorted(found, key=lambda item: item[0], reverse=True):
+        if exe not in candidates:
+            candidates.append(exe)
     return tuple(candidates)
 
 
@@ -112,7 +130,7 @@ def discover_autocad(
     """Locate accoreconsole.exe, raising :class:`AutoCadNotFoundError` if absent.
 
     Resolution order: explicit path, registry-registered installs (newest
-    first is not guaranteed), then the static candidate paths.
+    release first), then the static candidate paths (newest first).
     """
 
     searched: List[Path] = []

@@ -75,3 +75,33 @@ def test_check_for_update_survives_bad_payloads(monkeypatch):
         update, "fetch_latest_release", lambda repo=None: {"tag_name": "not-a-version"}
     )
     assert update.check_for_update() is None
+
+
+def test_find_bundle_sha256_reads_the_asset_digest():
+    digest = "0123456789abcdef" * 4
+    payload = {
+        "assets": [
+            {"name": "setup.exe", "browser_download_url": "u", "digest": "sha256:" + "f" * 64},
+            {
+                "name": "dwgmagic2-v1.2.0-win64.zip",
+                "browser_download_url": "https://example.test/bundle",
+                "digest": f"sha256:{digest.upper()}",
+            },
+        ]
+    }
+    assert update.find_bundle_sha256(payload) == digest
+
+
+def test_find_bundle_sha256_ignores_missing_or_malformed_digests():
+    def _payload(digest):
+        return {
+            "assets": [
+                {"name": "x-win64.zip", "browser_download_url": "u", "digest": digest}
+            ]
+        }
+
+    assert update.find_bundle_sha256({}) is None
+    assert update.find_bundle_sha256(_payload(None)) is None
+    assert update.find_bundle_sha256(_payload("md5:abc")) is None
+    assert update.find_bundle_sha256(_payload("sha256:nothex")) is None
+    assert update.find_bundle_sha256(_payload("sha256:" + "g" * 64)) is None

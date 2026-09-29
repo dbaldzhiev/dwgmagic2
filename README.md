@@ -37,7 +37,7 @@ A startup failure writes a full traceback to `%LOCALAPPDATA%\dwgmagic2\logs\cras
 
 ## Updating
 
-- **From the GUI** — when a newer release exists, an **Update to vX.Y.Z** button appears in the sidebar. It downloads the release bundle, swaps it over the installation, and relaunches. Your `logs/` folder is preserved, and there is no dependency installation step to fail.
+- **From the GUI** — when a newer release exists, an **Update to vX.Y.Z** button appears in the sidebar. It downloads the release bundle, verifies its SHA-256 against the one GitHub publishes, swaps it over the installation, and relaunches. The current installation is backed up first and restored if the swap fails; the update refuses to start while another DWGMAGIC window or `--cli` run is still open. Your `logs/` folder and the uninstaller are preserved, and there is no dependency installation step to fail.
 - Set `DWGMAGIC_CHECK_UPDATES=0` (or pass `--no-update-check`) to disable the startup check.
 
 ## Usage
@@ -54,7 +54,7 @@ The window is organised around the run lifecycle:
 - **Result panel** — deliverables you can open or reveal in Explorer, failures that click through to their output, and Open logs folder / Open manifest / Copy report.
 - **Logs tab** — level filter, search, and autoscroll.
 
-Open a project via the button, the Recent menu, or by dropping a folder onto the window. Keyboard: **Ctrl+O** open, **F5** run, **Esc** cancel. **Cancel** stops scheduling new jobs and kills running AutoCAD process trees; closing mid-run waits for them to exit rather than orphaning them.
+Open a project via the button, the Recent menu, or by dropping a folder onto the window. Keyboard: **Ctrl+O** open, **F5** run, **Esc** cancel (asks first). **Cancel** stops scheduling new jobs and kills running AutoCAD process trees; closing mid-run waits for them to exit rather than orphaning them.
 
 Light/Dark/System appearance; window size, appearance, parallel-job count, and recent projects persist between sessions.
 
@@ -79,7 +79,7 @@ Runtime settings are defined by the [`Settings` dataclass](dwgmagic/settings.py)
 
 | Setting | Env var | Default | Purpose |
 | --- | --- | --- | --- |
-| `autocad_executable` | `DWGMAGIC_AUTOCAD_PATH` | auto-discovered | Explicit `accoreconsole.exe` path. Discovery checks the registry, then `C:\Program Files\Autodesk\AutoCAD 2017–2026`. |
+| `autocad_executable` | `DWGMAGIC_AUTOCAD_PATH` | auto-discovered | Explicit `accoreconsole.exe` path. Discovery checks the registry, then `C:\Program Files\Autodesk\AutoCAD <year>`, newest release first (tectonica.dll needs AutoCAD 2025+). |
 | `tectonica_path` | `DWGMAGIC_TECTONICA_PATH` | the app folder | Where `tectonica.dll` is NETLOADed from (relocatable). |
 | `max_workers` | `DWGMAGIC_MAX_WORKERS` | CPU count, capped at 8 and ~1 per GB of RAM | Simultaneous AutoCAD console processes. The GUI's Options choice overrides it. |
 | `job_timeout` | `DWGMAGIC_JOB_TIMEOUT` | `1800` | Seconds before a hung job is killed. |
