@@ -165,6 +165,8 @@ class GuiApplication(_RootWindow):
         self._job_total_is_final = False
         #: Console dump of each job this run, as reported by the runner.
         self._job_logs: dict[str, Path] = {}
+        self._last_plan_refresh = 0.0
+        self._shown_plan_signature: tuple = ()
 
         # Preflight
         self._preflight_cache: dict[tuple, dict] = {}
@@ -309,7 +311,41 @@ class GuiApplication(_RootWindow):
     def _bind_shortcuts(self) -> None:
         self.bind("<Control-o>", lambda _e: self._choose_project())
         self.bind("<F5>", lambda _e: self._start_pipeline())
-        self.bind("<Escape>", lambda _e: self._cancel_pipeline())
+        self.bind("<Escape>", lambda _e: self._confirm_cancel_pipeline())
+        # The plan panel describes the folder as it was when loaded; a re-export
+        # made while the window sat in the background left it describing the
+        # old contents right up to the click.
+        self.bind("<FocusIn>", self._on_focus_in, add="+")
+
+    def _on_focus_in(self, event) -> None:
+        if event.widget is not self or self._running or self.project_root is None:
+            return
+        now = time.monotonic()
+        if now - self._last_plan_refresh < 2.0:
+            return
+        self._last_plan_refresh = now
+        try:
+            # Only when the folder changed: a redraw would also replace the
+            # "Run completed / failed" line the user came back to read.
+            if self._plan_signature() != self._shown_plan_signature:
+                self._refresh_plan()
+        except Exception:  # noqa: BLE001 - a stale panel beats a broken focus event
+            pass
+
+    def _plan_signature(self) -> tuple:
+        if self.project_root is None:
+            return ()
+        log_dir = self.current_settings.log_dir if self.current_settings else Path("logs")
+        return self._signature_of(plan_run(self.project_root, log_dir))
+
+    @staticmethod
+    def _signature_of(plan) -> tuple:
+        return (
+            plan.mode,
+            plan.dwg_count,
+            plan.replaces_previous,
+            tuple(str(path) for path in plan.deletes),
+        )
 
     def _show_empty_state(self, empty: bool) -> None:
         if empty:
@@ -441,6 +477,7 @@ class GuiApplication(_RootWindow):
             return
         log_dir = self.current_settings.log_dir if self.current_settings else Path("logs")
         plan = plan_run(self.project_root, log_dir)
+        self._shown_plan_signature = self._signature_of(plan)
         inspection = inspect_project(self.project_root)
         classified = classify_dwg_files(inspection.dwg_names)
         orphans = [
@@ -615,14 +652,15 @@ class GuiApplication(_RootWindow):
         self._job_logs = {}
         self._run_started = time.monotonic()
 
+        workers = self._effective_workers()
+
         self.result_panel.grid_forget()
         self.work_view.reset(self.stage_names)
         self.work_view.set_filter("all")
-        self.run_panel.begin_run()
+        self.run_panel.begin_run(workers)
         self.project_bar.open_button.configure(state="disabled")
         self.tabview.set("Work")
 
-        workers = self._effective_workers()
         if self.coordinator is not None:
             self.coordinator.max_workers = workers
         if self.logger_factory is not None:
@@ -657,6 +695,17 @@ class GuiApplication(_RootWindow):
             raise RuntimeError("Project configuration has not been loaded")
         config = ProjectConfig(settings=self.current_settings, stages=self.stage_names)
         return ProjectContext(config=config, environment=self.environment)
+
+    def _confirm_cancel_pipeline(self) -> None:
+        """Esc is bound window-wide, so it also fires while typing elsewhere
+        (the log search box). Killing every AutoCAD job needs a yes first."""
+
+        if not self._running or self._cancel_event is None or self._cancel_event.is_set():
+            return
+        if messagebox.askyesno(
+            "Cancel run", "Stop the run and kill the running AutoCAD jobs?", icon="warning"
+        ):
+            self._cancel_pipeline()
 
     def _cancel_pipeline(self) -> None:
         if not self._running or self._cancel_event is None:
@@ -1071,6 +1120,7 @@ class GuiApplication(_RootWindow):
                             "current": info.current,
                             "url": info.url,
                             "package_url": info.package_url,
+                            "package_sha256": info.package_sha256,
                         },
                     )
                 )
@@ -1085,7 +1135,12 @@ class GuiApplication(_RootWindow):
             return
         info = self._update_info or {}
         package_url = info.get("package_url")
-        if package_url and launch_updater(package_url, relaunch_gui=True):
+        if package_url and launch_updater(
+            package_url,
+            relaunch_gui=True,
+            version=info.get("latest"),
+            sha256=info.get("package_sha256"),
+        ):
             messagebox.showinfo(
                 "Updating",
                 "The updater has been started. DWGMAGIC will close now and "

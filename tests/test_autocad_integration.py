@@ -378,3 +378,58 @@ def test_coordinator_notifies_listener(tmp_path):
     assert ("output", "demo", "live line") in events
     completed_events = [event for event in events if event[0] == "completed"]
     assert completed_events and completed_events[0][1:] == ("demo", "stdout", "stderr")
+
+
+def test_registry_candidates_prefer_the_newest_release(monkeypatch):
+    """Regression: registry keys enumerate oldest first, so a machine with
+    AutoCAD 2020 and 2025 ran 2020 — which cannot load the .NET 8 plugin."""
+
+    import sys
+    import types
+
+    tree = {
+        r"SOFTWARE\Autodesk\AutoCAD": ["R23.1", "R25.0", "R24.3"],
+        r"R23.1": ["ACAD-3001:409"],
+        r"R25.0": ["ACAD-8101:409"],
+        r"R24.3": ["ACAD-7101:409"],
+    }
+    locations = {
+        "ACAD-3001:409": r"C:\AutoCAD 2020",
+        "ACAD-8101:409": r"C:\AutoCAD 2025",
+        "ACAD-7101:409": r"C:\AutoCAD 2024",
+    }
+
+    class _Key:
+        def __init__(self, name):
+            self.name = name
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    fake = types.SimpleNamespace(
+        HKEY_LOCAL_MACHINE="HKLM",
+        HKEY_CURRENT_USER="HKCU",
+        OpenKey=lambda parent, name: (
+            _Key(name) if parent == "HKLM" or isinstance(parent, _Key) else (_ for _ in ()).throw(OSError())
+        ),
+        QueryInfoKey=lambda key: (len(tree.get(key.name, [])),),
+        EnumKey=lambda key, i: tree[key.name][i],
+        QueryValueEx=lambda key, value: (locations[key.name], 1),
+    )
+    monkeypatch.setitem(sys.modules, "winreg", fake)
+
+    from dwgmagic.integrations.autocad import registry_autocad_candidates
+
+    found = [str(path.parent) for path in registry_autocad_candidates()]
+    assert found == [r"C:\AutoCAD 2025", r"C:\AutoCAD 2024", r"C:\AutoCAD 2020"]
+
+
+def test_static_candidates_are_newest_first():
+    from dwgmagic.settings import DEFAULT_AUTOCAD_CANDIDATES
+
+    years = [int(path.parent.name.rsplit(" ", 1)[-1]) for path in DEFAULT_AUTOCAD_CANDIDATES]
+    assert years == sorted(years, reverse=True)
+    assert 2027 in years

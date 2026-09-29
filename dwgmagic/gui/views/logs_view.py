@@ -18,6 +18,10 @@ from dwgmagic.gui.widgets import copy_to_clipboard, open_path
 
 #: Hard ceiling on lines held in the widget *and* the backing buffer.
 MAX_LINES = 5000
+#: Lines dropped at once when the ceiling is hit. Trimming one line per
+#: append re-rendered the whole pane for every new log line once it was full,
+#: which froze the window for the rest of a long run.
+TRIM_CHUNK = 500
 
 _LEVELS = ("all", "info", "warning", "error")
 _ORDER = {"info": 0, "warning": 1, "error": 2}
@@ -85,7 +89,7 @@ class LogsView(ctk.CTkFrame):
         level = level if level in _ORDER else "info"
         self._entries.append((level, message))
         if len(self._entries) > MAX_LINES:
-            del self._entries[: len(self._entries) - MAX_LINES]
+            del self._entries[: len(self._entries) - MAX_LINES + TRIM_CHUNK]
             self._rerender()
             return
         if self._passes(level, message):
@@ -96,12 +100,15 @@ class LogsView(ctk.CTkFrame):
             return False
         return self._query in message.lower() if self._query else True
 
-    def _write(self, level: str, message: str) -> None:
-        self.text.configure(state="normal")
+    def _insert(self, level: str, message: str) -> None:
         try:
             self.text.insert(tk.END, message + "\n", () if level == "info" else (level,))
         except Exception:  # noqa: BLE001 - tag support differences
             self.text.insert(tk.END, message + "\n")
+
+    def _write(self, level: str, message: str) -> None:
+        self.text.configure(state="normal")
+        self._insert(level, message)
         # Trim the widget, not just the buffer.
         try:
             excess = int(self.text.index("end-1c").split(".")[0]) - MAX_LINES
@@ -114,12 +121,15 @@ class LogsView(ctk.CTkFrame):
         self.text.configure(state="disabled")
 
     def _rerender(self) -> None:
+        # One state toggle and one scroll for the whole buffer, not per line.
         self.text.configure(state="normal")
         self.text.delete("1.0", tk.END)
-        self.text.configure(state="disabled")
         for level, message in self._entries:
             if self._passes(level, message):
-                self._write(level, message)
+                self._insert(level, message)
+        if self._autoscroll:
+            self.text.see(tk.END)
+        self.text.configure(state="disabled")
 
     # ----------------------------------------------------------------------
     def _on_level(self, value: str) -> None:

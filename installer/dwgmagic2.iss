@@ -51,6 +51,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 Name: "contextmenu"; Description: "Add ""Run with DWGMAGIC"" to folder right-click menus"; GroupDescription: "Shell integration:"
 
+[InstallDelete]
+; Installing over an older version only adds and overwrites files; modules the
+; new bundle no longer ships would linger in _internal and could be imported.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "..\dist\dwgmagic2\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 

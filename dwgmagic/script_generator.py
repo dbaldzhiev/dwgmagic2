@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from jinja2 import Environment, TemplateNotFound
 
@@ -30,6 +30,53 @@ def execution_scripts_dir(project_root: Path) -> Path:
 
     digest = hashlib.sha1(str(project_root).encode("utf-8")).hexdigest()[:10]
     return Path(tempfile.gettempdir()) / "dwgmagic2" / f"{project_root.name}_{digest}"
+
+
+def _short_path(path: Path) -> Optional[str]:
+    """Windows 8.3 short form of an existing path, or None when unavailable."""
+
+    try:
+        import ctypes
+
+        get_short = ctypes.windll.kernel32.GetShortPathNameW  # type: ignore[attr-defined]
+    except (ImportError, AttributeError):
+        return None
+    size = get_short(str(path), None, 0)
+    if not size:
+        return None
+    buffer = ctypes.create_unicode_buffer(size)
+    if not get_short(str(path), buffer, size):
+        return None
+    return buffer.value
+
+
+def script_path_text(path: Path, encoding: str) -> str:
+    """``path`` as it must be written into a script in ``encoding``.
+
+    AutoCAD scripts are written in a legacy codepage (cp1251 by default). The
+    app lives under the Windows user profile, so a user name with characters
+    outside that codepage (Greek, Chinese, ...) could not be expressed; the
+    trusted-folder check wrote ``?`` in their place and the NETLOAD failed
+    with no clue why. The 8.3 short path is pure ASCII and names the same
+    folder. When neither form is representable, the original is returned and
+    writing the script raises a clear encoding error.
+    """
+
+    text = path.as_posix()
+    try:
+        text.encode(encoding)
+        return text
+    except UnicodeEncodeError:
+        pass
+    short = _short_path(path)
+    if short:
+        short_text = short.replace("\\", "/")
+        try:
+            short_text.encode(encoding)
+            return short_text
+        except UnicodeEncodeError:
+            pass
+    return text
 
 
 @dataclass(slots=True)
@@ -151,7 +198,9 @@ class ScriptGenerator:
                     hint="Check --template-root / template_roots configuration.",
                 ) from exc
         rendered = template.render(
-            tectonica_path=context.settings.tectonica_path.as_posix(),
+            tectonica_path=script_path_text(
+                context.settings.tectonica_path, context.settings.script_encoding
+            ),
             project_name=context.project_root.name,
             # Scripts address their outputs absolutely. Windows cannot give a
             # process a UNC working directory, so a relative path in a script
@@ -178,4 +227,4 @@ class ScriptGenerator:
         return destination
 
 
-__all__ = ["ScriptGenerator"]
+__all__ = ["ScriptGenerator", "execution_scripts_dir", "script_path_text"]

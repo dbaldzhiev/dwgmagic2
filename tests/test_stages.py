@@ -683,3 +683,94 @@ def test_continue_on_error_reports_a_failed_job_once(tmp_path):
     sheet_findings = [message for message in records if message.startswith("sheet batch")]
     assert len(sheet_findings) == 1, sheet_findings
     assert "had failures" in sheet_findings[0]
+
+
+def test_corrupt_archive_stops_the_rerun_before_originals_are_deleted(tmp_path):
+    """Regression: an archive rerun wiped originals/ and only then found out
+    original.zip could not be extracted — leaving no intact copy of the sources."""
+
+    context, settings = make_context(tmp_path)
+    archive = tmp_path / "original.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_STORED) as zip_file:
+        zip_file.writestr("sheet.dwg", "archived-drawing-content")
+    # Damage the file data but not the central directory, which is all that
+    # inspect_project reads.
+    raw = archive.read_bytes()
+    archive.write_bytes(raw.replace(b"archived-drawing-content", b"XXXXXXXXXXXXXXXXXXXXXXXX"))
+    originals = tmp_path / "originals"
+    originals.mkdir()
+    (originals / "sheet.dwg").write_text("the only good copy")
+
+    result = PreprocessorStage(Preprocessor(), LoggerFactory(settings)).run(context)
+
+    assert result.succeeded is False
+    assert "corrupt" in (result.details or "")
+    assert (originals / "sheet.dwg").read_text() == "the only good copy"
+
+
+def test_generated_trusted_check_script_has_a_stable_name(tmp_path):
+    """Regression: the runner names its logs/jobs dump after the script, and a
+    random temp name left a new dump behind on every launch."""
+
+    _context, settings = make_context(tmp_path)
+    tectonica = tmp_path / "tectonica"
+    tectonica.mkdir()
+    (tectonica / "tectonica.dll").write_text("dll")
+    settings.tectonica_path = tectonica
+
+    names = []
+
+    def run_script(script_path, logger, input_path=None, **kwargs):
+        names.append(Path(script_path).name)
+        return AutoCadResult(
+            name="trusted", returncode=0, stdout=PLUGIN_LOADED_MARKER, stderr="", command=()
+        )
+
+    for _ in range(2):
+        TrustedFolderChecker(SimpleNamespace(run_script=run_script), use_cache=False).check(
+            settings, LoggerFactory(settings).create("TEST")
+        )
+
+    assert len(names) == 2
+    assert names[0] == names[1]
+
+
+def test_script_paths_fall_back_to_the_short_path_outside_the_codepage(tmp_path, monkeypatch):
+    """Regression: a user name outside cp1251 reached AutoCAD as '?' and the
+    NETLOAD failed as if the folder were untrusted."""
+
+    from dwgmagic import script_generator
+
+    greek = Path("C:/Users/Νίκος/AppData/Local/dwgmagic2")
+    assert script_generator.script_path_text(Path("C:/Users/Иван/x"), "cp1251") == "C:/Users/Иван/x"
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: r"C:\Users\5B1D~1\APPDATA\LOCAL\DWGMAG~1")
+    assert (
+        script_generator.script_path_text(greek, "cp1251")
+        == "C:/Users/5B1D~1/APPDATA/LOCAL/DWGMAG~1"
+    )
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: None)
+    assert script_generator.script_path_text(greek, "cp1251") == greek.as_posix()
+
+
+def test_trusted_check_explains_an_unencodable_app_folder(tmp_path, monkeypatch):
+    from dwgmagic import script_generator
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: None)
+    _context, settings = make_context(tmp_path)
+    tectonica = tmp_path / "Νίκος"
+    tectonica.mkdir()
+    (tectonica / "tectonica.dll").write_text("dll")
+    settings.tectonica_path = tectonica
+
+    def run_script(**kwargs):
+        raise AssertionError("must not run a script with a mangled path")
+
+    checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script), use_cache=False)
+    try:
+        checker.check(settings, LoggerFactory(settings).create("TEST"))
+    except Exception as exc:  # noqa: BLE001
+        assert "cannot express" in str(exc)
+    else:
+        raise AssertionError("expected a TrustedFolderError")

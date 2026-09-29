@@ -40,6 +40,8 @@ class UpdateInfo:
     url: str
     notes: str
     package_url: Optional[str] = None
+    #: Hex SHA-256 of the bundle zip, from the GitHub asset ``digest``.
+    package_sha256: Optional[str] = None
 
 
 def _parse_version(raw: str) -> Optional[Version]:
@@ -67,16 +69,34 @@ def fetch_latest_release(repo: str = GITHUB_REPO) -> Optional[dict]:
         return None
 
 
+def _bundle_asset(payload: dict) -> Optional[dict]:
+    for asset in payload.get("assets") or []:
+        name = str(asset.get("name") or "")
+        if name.endswith(_BUNDLE_SUFFIX) and asset.get("browser_download_url"):
+            return asset
+    return None
+
+
 def find_bundle_asset(payload: dict) -> Optional[str]:
     """Download URL of the release's onedir bundle zip, if it published one."""
 
-    for asset in payload.get("assets") or []:
-        name = str(asset.get("name") or "")
-        if name.endswith(_BUNDLE_SUFFIX):
-            download = asset.get("browser_download_url")
-            if download:
-                return str(download)
-    return None
+    asset = _bundle_asset(payload)
+    return str(asset["browser_download_url"]) if asset else None
+
+
+def find_bundle_sha256(payload: dict) -> Optional[str]:
+    """SHA-256 GitHub computed for the bundle zip (``"sha256:<hex>"``), if any."""
+
+    asset = _bundle_asset(payload)
+    digest = str((asset or {}).get("digest") or "")
+    algorithm, _, value = digest.partition(":")
+    if algorithm.lower() != "sha256" or len(value) != 64:
+        return None
+    try:
+        int(value, 16)
+    except ValueError:
+        return None
+    return value.lower()
 
 
 def check_for_update(repo: str = GITHUB_REPO) -> Optional[UpdateInfo]:
@@ -98,6 +118,7 @@ def check_for_update(repo: str = GITHUB_REPO) -> Optional[UpdateInfo]:
         url=str(payload.get("html_url") or f"https://github.com/{repo}/releases"),
         notes=str(payload.get("body") or "").strip(),
         package_url=find_bundle_asset(payload),
+        package_sha256=find_bundle_sha256(payload),
     )
 
 
@@ -108,7 +129,13 @@ def updater_script() -> Optional[Path]:
     return script if script.exists() else None
 
 
-def launch_updater(package_url: str, *, relaunch_gui: bool = True) -> bool:
+def launch_updater(
+    package_url: str,
+    *,
+    relaunch_gui: bool = True,
+    version: Optional[str] = None,
+    sha256: Optional[str] = None,
+) -> bool:
     """Start the detached updater; returns False if it is unavailable.
 
     The caller should exit promptly afterwards so the updater can replace the
@@ -140,6 +167,10 @@ def launch_updater(package_url: str, *, relaunch_gui: bool = True) -> bool:
     ]
     if relaunch_gui:
         args.append("-Relaunch")
+    if sha256:
+        args.extend(["-Sha256", sha256])
+    if version:
+        args.extend(["-Version", version])
 
     subprocess.Popen(  # noqa: S603 - launching our own updater
         args,
@@ -155,5 +186,6 @@ __all__ = [
     "check_for_update",
     "fetch_latest_release",
     "find_bundle_asset",
+    "find_bundle_sha256",
     "launch_updater",
 ]

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
@@ -95,6 +96,9 @@ def add_trusted_path(path: Path) -> List[str]:
 #: actually loaded; the mere absence of a NETLOAD error message does not.
 PLUGIN_LOADED_MARKER = "HELLO! TEST! DEBUG TECTONICA!"
 
+#: Name of the generated check script, and so of its ``logs/jobs`` dump.
+_CHECK_SCRIPT_NAME = "trusted_folder_check.scr"
+
 #: Checks that passed in this process, keyed by what they depend on. A pass
 #: stays valid until the DLL, its location or the AutoCAD executable change,
 #: so stage 1 of a run does not cold-start accoreconsole again right after
@@ -148,10 +152,7 @@ class TrustedFolderChecker:
                 # This check runs at startup, on every project load and as
                 # stage 1 of every run; without this the temp files pile up
                 # forever, because the static fallback script is never shipped.
-                try:
-                    script_path.unlink(missing_ok=True)
-                except OSError:  # pragma: no cover - AV/permission quirks
-                    pass
+                shutil.rmtree(script_path.parent, ignore_errors=True)
         if not result.succeeded:
             reason = getattr(result, "failure_reason", None) or f"exit code {result.returncode}"
             raise TrustedFolderError(
@@ -185,18 +186,29 @@ class TrustedFolderChecker:
         if static_script.exists():
             return static_script, False
 
-        dll = (settings.tectonica_path / "tectonica.dll").as_posix()
-        handle = tempfile.NamedTemporaryFile(
-            "w",
-            suffix=".scr",
-            prefix="dwgmagic_trusted_",
-            delete=False,
-            encoding=settings.script_encoding,
-            errors="replace",
-        )
-        with handle as fh:
-            fh.write(f'netload "{dll}"\ntectest\n')
-        return Path(handle.name), True
+        from dwgmagic.script_generator import script_path_text
+
+        folder = script_path_text(settings.tectonica_path, settings.script_encoding)
+        body = f'netload "{folder}/tectonica.dll"\ntectest\n'
+        try:
+            body.encode(settings.script_encoding)
+        except UnicodeEncodeError as exc:
+            # errors="replace" used to turn these into "?", and the check then
+            # failed as an untrusted folder, pointing at the wrong fix.
+            raise TrustedFolderError(
+                f"The DWGMAGIC folder {settings.tectonica_path} contains characters "
+                f"that AutoCAD scripts in {settings.script_encoding!r} cannot express",
+                hint=(
+                    "Reinstall DWGMAGIC to a folder with plain (ASCII) characters, "
+                    "or set script_encoding in the configuration."
+                ),
+            ) from exc
+        # A fixed file name inside a private temp dir: the runner names its
+        # logs/jobs dump after the script, and a random name left a new dump
+        # behind on every launch (in the app folder, before a project is open).
+        script = Path(tempfile.mkdtemp(prefix="dwgmagic_trusted_")) / _CHECK_SCRIPT_NAME
+        script.write_text(body, encoding=settings.script_encoding)
+        return script, True
 
 
 class AutoCadRunnerProtocol:
