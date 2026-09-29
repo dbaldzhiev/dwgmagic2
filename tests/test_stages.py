@@ -733,3 +733,44 @@ def test_generated_trusted_check_script_has_a_stable_name(tmp_path):
 
     assert len(names) == 2
     assert names[0] == names[1]
+
+
+def test_script_paths_fall_back_to_the_short_path_outside_the_codepage(tmp_path, monkeypatch):
+    """Regression: a user name outside cp1251 reached AutoCAD as '?' and the
+    NETLOAD failed as if the folder were untrusted."""
+
+    from dwgmagic import script_generator
+
+    greek = Path("C:/Users/Νίκος/AppData/Local/dwgmagic2")
+    assert script_generator.script_path_text(Path("C:/Users/Иван/x"), "cp1251") == "C:/Users/Иван/x"
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: r"C:\Users\5B1D~1\APPDATA\LOCAL\DWGMAG~1")
+    assert (
+        script_generator.script_path_text(greek, "cp1251")
+        == "C:/Users/5B1D~1/APPDATA/LOCAL/DWGMAG~1"
+    )
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: None)
+    assert script_generator.script_path_text(greek, "cp1251") == greek.as_posix()
+
+
+def test_trusted_check_explains_an_unencodable_app_folder(tmp_path, monkeypatch):
+    from dwgmagic import script_generator
+
+    monkeypatch.setattr(script_generator, "_short_path", lambda path: None)
+    _context, settings = make_context(tmp_path)
+    tectonica = tmp_path / "Νίκος"
+    tectonica.mkdir()
+    (tectonica / "tectonica.dll").write_text("dll")
+    settings.tectonica_path = tectonica
+
+    def run_script(**kwargs):
+        raise AssertionError("must not run a script with a mangled path")
+
+    checker = TrustedFolderChecker(SimpleNamespace(run_script=run_script), use_cache=False)
+    try:
+        checker.check(settings, LoggerFactory(settings).create("TEST"))
+    except Exception as exc:  # noqa: BLE001
+        assert "cannot express" in str(exc)
+    else:
+        raise AssertionError("expected a TrustedFolderError")

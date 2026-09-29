@@ -64,3 +64,56 @@ def test_eta_accounts_for_parallel_jobs():
 def test_eta_is_unknown_before_any_job_finishes():
     panel = _FakePanel(workers=4, total=10, done=0, durations=[])
     assert panel._estimate_remaining() is None
+
+
+class _FakeText:
+    """Minimal stand-in for a Tk text widget holding newline-terminated lines."""
+
+    def __init__(self):
+        self.lines = []
+
+    def configure(self, **kwargs):
+        pass
+
+    def insert(self, _index, text):
+        self.lines.append(text.rstrip("\n"))
+
+    def see(self, _index):
+        pass
+
+    def index(self, spec):
+        assert spec == "end-1c"
+        return f"{len(self.lines) + 1}.0"
+
+    def delete(self, start, end):
+        assert start == "1.0"
+        del self.lines[: int(end.split(".")[0]) - 1]
+
+
+def test_selected_job_output_widget_is_capped():
+    """Regression: the per-job buffer was capped but the text widget showing
+    the selected job was not, so its output grew for as long as it ran."""
+
+    from dwgmagic.gui.views import work_view
+    from dwgmagic.gui.views.work_view import WorkView
+
+    class _FakeWork:
+        append_output = WorkView.append_output
+        _trim_output_widget = WorkView._trim_output_widget
+
+        def __init__(self):
+            self._output = {}
+            self._selected = "job:sheet:A"
+            self.output = _FakeText()
+
+        def _ensure_job(self, name):
+            return f"job:{name}"
+
+    view = _FakeWork()
+    total = work_view._MAX_OUTPUT_LINES + 500
+    for i in range(total):
+        view.append_output("sheet:A", f"out {i}")
+
+    assert len(view.output.lines) == work_view._MAX_OUTPUT_LINES
+    assert view.output.lines[-1] == f"out {total - 1}"
+    assert view.output.lines == view._output["job:sheet:A"]

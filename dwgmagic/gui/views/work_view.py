@@ -338,8 +338,19 @@ class WorkView(ctk.CTkFrame):
         if node == self._selected:
             self.output.configure(state="normal")
             self.output.insert(tk.END, line + "\n")
+            # The buffer above was capped but the widget was not: the output
+            # of a selected job accumulated in Tk for as long as it ran.
+            self._trim_output_widget()
             self.output.see(tk.END)
             self.output.configure(state="disabled")
+
+    def _trim_output_widget(self) -> None:
+        try:
+            excess = int(self.output.index("end-1c").split(".")[0]) - 1 - _MAX_OUTPUT_LINES
+            if excess > 0:
+                self.output.delete("1.0", f"{excess + 1}.0")
+        except (tk.TclError, ValueError):  # pragma: no cover
+            pass
 
     # -- filtering --------------------------------------------------------
     def set_filter(self, key: str) -> None:
